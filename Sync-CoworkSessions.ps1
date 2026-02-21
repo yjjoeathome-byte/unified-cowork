@@ -106,7 +106,7 @@ function Load-Config {
         "session_dir_prefix"   = "local_"
         "transcript_filename"  = "audit.jsonl"
         "min_file_size_bytes"  = 1024
-        "expected_entry_types" = @("system", "user", "assistant", "result", "tool_use_summary")
+        "expected_entry_types" = @("system", "user", "assistant", "result", "tool_use_summary", "rate_limit_event")
         "expected_init_fields" = @("session_id", "model", "cwd", "mcp_servers")
     }
     foreach ($k in $fmtDefaults.Keys) {
@@ -340,7 +340,15 @@ function Get-PendingSessions {
     foreach ($f in $transcripts) {
         if ($f.Length -lt $minSize) { continue }
 
-        $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash
+        # Skip files locked by a running Cowork session
+        $hash = $null
+        try {
+            $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash
+        } catch {
+            Write-Host "[~] Skipping locked file (active session?): $($f.FullName)" -ForegroundColor DarkYellow
+            $Script:WarningCount++
+            continue
+        }
 
         # Extract session UUID from parent folder
         $sessionFolder = $f.Directory.Name

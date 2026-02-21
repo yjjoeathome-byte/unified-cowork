@@ -23,7 +23,7 @@
         "session_dir_prefix": "local_",
         "transcript_filename": "audit.jsonl",
         "min_file_size_bytes": 1024,
-        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary"],
+        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary", "rate_limit_event"],
         "expected_init_fields": ["session_id", "model", "cwd", "mcp_servers"]
     }
 }
