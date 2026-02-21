@@ -192,6 +192,10 @@ pwsh -ExecutionPolicy Bypass -File Register-CoworkSync.ps1
 pwsh -ExecutionPolicy Bypass -File Register-CoworkSync.ps1 -IntervalMinutes 10
 ```
 
+The script will prompt for your Windows password. The task runs as "Run whether user is logged on or not" — completely invisible, no console flash, no window.
+
+> **Windows Hello users**: if you don't know your password (biometric/PIN only), set one first from an elevated prompt: `net user YourUsername *` — this won't affect Windows Hello.
+
 Manage the task:
 ```powershell
 Get-ScheduledTaskInfo -TaskName 'CoworkSessionSync'
