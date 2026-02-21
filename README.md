@@ -120,7 +120,7 @@ Session storage paths by platform:
         "session_dir_prefix": "local_",
         "transcript_filename": "audit.jsonl",
         "min_file_size_bytes": 1024,
-        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary"],
+        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary", "rate_limit_event"],
         "expected_init_fields": ["session_id", "model", "cwd", "mcp_servers"]
     }
 }
@@ -229,6 +229,7 @@ launchctl unload ~/Library/LaunchAgents/com.cowork-sync.agent.plist  # stop
 ```
 output_dir/
 ├── SESSION-INDEX.md          ← Catalog of all sessions (auto-generated)
+├── CATCH-UP.md               ← Lightweight index grouped by project with topic lines
 ├── raw/                      ← Lossless audit.jsonl copies
 │   ├── 2026-02-14_sleepy-charming-ramanujan.jsonl
 │   └── ...
@@ -297,16 +298,52 @@ Sessions are auto-tagged by scanning the distilled transcript for keywords. A se
 
 Keywords are matched case-insensitively. Use specific terms to avoid false positives — `"vllm"` is better than `"model"`.
 
-## Use With LLMs
+## Session Catch-Up (New Chat Bootstrap)
 
-The distilled transcripts are designed to be fed to Claude (or any LLM) for cross-session continuity. Typical workflow:
+Every Cowork session starts with a blank context. This pipeline generates the pieces needed to restore continuity automatically.
 
-1. Start a new Cowork session
-2. Point Claude at `SESSION-INDEX.md` to find relevant past sessions
-3. Have Claude read the specific `distilled/*.md` file for context
-4. Resume work with full history
+### How it works
 
-The distilled format is optimized for LLM consumption: minimal noise, structured headers, inline tool summaries. Raw JSONL should only be consulted when distilled content is missing detail (rare).
+The sync script generates `CATCH-UP.md` on every run — a lightweight index of all sessions grouped by project, each with a topic line extracted from the first user message. Example:
+
+```markdown
+## my-infra-project
+
+- **2026-02-20** friendly-wizardly-lamport (171 turns, $31.39): "upgrade the storage nodes to NVMe"
+- **2026-02-19** festive-quirky-gauss (131 turns, $35.74): "debug the ceph rebalance stall"
+
+## untagged
+
+- **2026-02-16** clever-sweet-noether (1 turns, $0.09): "test session"
+```
+
+### Bootstrapping a new chat
+
+Add a **catch-up protocol** to your global `CLAUDE.md` so every new Cowork session reads `CATCH-UP.md` and offers to restore context. The file `examples/catch-up-protocol.md` in this repo contains a ready-to-paste template.
+
+**Setup (one-time):**
+
+1. Locate your global `CLAUDE.md`:
+   - Windows: `%APPDATA%\Claude\.claude\CLAUDE.md`
+   - macOS: `~/Library/Application Support/Claude/.claude/CLAUDE.md`
+2. Open `examples/catch-up-protocol.md` from this repo
+3. Adapt the read mechanism to match how your Cowork sessions access the output directory (local path, mounted share, or MCP tool like ssh-relay)
+4. Paste the adapted block into your `CLAUDE.md`
+
+**What happens next:**
+
+1. You open a new Cowork chat and say anything
+2. Claude reads `CATCH-UP.md` (cheap — it's a few KB)
+3. Claude presents your projects and recent sessions as a numbered list
+4. You pick one (or say "fresh topic")
+5. Claude reads the first ~50 lines of the selected distilled transcript for context
+6. Work resumes — no manual context dumping
+
+The distilled files (`distilled/*.md`) contain the full conversation text, structured with headers and tool summaries. The raw JSONL (`raw/*.jsonl`) is the lossless safety net if the distilled version is ever missing detail.
+
+### Token cost
+
+Reading `CATCH-UP.md` costs a few hundred tokens. Loading the header of a distilled file adds another few hundred. Total bootstrap overhead is typically under 1K tokens — negligible compared to a session that will run thousands.
 
 ## Troubleshooting
 
