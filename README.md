@@ -1,33 +1,39 @@
 # cowork-session-sync
 
-Automated backup and distillation pipeline for [Claude Cowork](https://www.anthropic.com) sessions.
+Automated backup, distillation, and **cross-session context restoration** for [Claude Cowork](https://www.anthropic.com) sessions.
 
-Cowork sessions accumulate valuable context — reasoning chains, corrections, dead-end analysis, decisions — that exists only on your local machine with no built-in sync or export. This tool watches for new sessions, archives the raw transcripts, and distills each into a clean Markdown file that humans and LLMs can read efficiently.
+Every Cowork session starts from scratch. This tool fixes that. It watches your local sessions, archives the raw transcripts, distills each into clean Markdown, and generates a **catch-up index** that lets new Cowork chats pick up exactly where you left off — automatically, at near-zero token cost.
 
-## ⚠️ Format Stability Warning
+## Quick Start: New Chat Catch-Up
 
-**This tool parses an undocumented, internal data format.** Anthropic has not published a specification for Cowork's session storage. Everything here was reverse-engineered from observed behavior as of February 2026.
+**The problem:** you open a new Cowork session and have to manually explain what you were working on yesterday.
 
-Things that **will** change without notice:
-- The storage directory path (`local-agent-mode-sessions` today)
-- The folder naming convention (`local_{uuid}` today)
-- The transcript filename (`audit.jsonl` today)
-- The JSONL entry schema (field names, entry types, nesting)
+**The fix:** the pipeline generates `CATCH-UP.md` — a lightweight index of all your sessions grouped by project, each with a topic line:
 
-**The script is designed to detect and surface these changes rather than silently break.** On every run, it validates the session directory structure and JSONL format against expected patterns. When something doesn't match, it prints specific diagnostics and points you to the config knobs that need adjustment.
+```markdown
+## my-infra-project
 
-If the format changes, here's what to expect:
+- **2026-02-20** friendly-wizardly-lamport (171 turns, $31.39): "upgrade the storage nodes to NVMe"
+- **2026-02-19** festive-quirky-gauss (131 turns, $35.74): "debug the ceph rebalance stall"
 
-| Change | Symptom | Fix |
-|--------|---------|-----|
-| Storage path moved | `Sessions directory not found` + alternative paths listed | Update `sessions_dir` in config.json |
-| Transcript file renamed | `No audit.jsonl files found` + alternative filenames listed | Update `format.transcript_filename` |
-| Folder prefix changed | `Session directory does not start with expected prefix` | Update `format.session_dir_prefix` |
-| New entry types added | `Unknown entry types: newtype(×N)` — non-fatal, entries skipped | No action needed (or update script to handle them) |
-| JSONL replaced with JSON | `Failed to parse JSONL line` + hint about single-object JSON | Script needs structural update — check repo issues |
-| Init block fields renamed | `Init block missing expected fields` — metadata may be incomplete | Update `format.expected_init_fields` |
+## untagged
 
-The `format` section in `config.json` exposes every assumption the script makes about the storage layout. When Anthropic changes something, you adjust the config rather than editing the script.
+- **2026-02-16** clever-sweet-noether (1 turns, $0.09): "test session"
+```
+
+Add a catch-up protocol to your global `CLAUDE.md` (template in `examples/catch-up-protocol.md`) and every new chat will:
+
+1. Read `CATCH-UP.md` (~few KB, a few hundred tokens)
+2. Present your projects and recent sessions as a numbered list
+3. Wait for you to pick one or say "fresh topic"
+4. Load the first ~50 lines of the selected distilled transcript
+5. Resume work with context — no manual re-explaining
+
+**Total bootstrap cost: under 1K tokens.**
+
+See [Session Catch-Up](#session-catch-up-new-chat-bootstrap) below for full setup instructions.
+
+---
 
 ## What It Does
 
@@ -40,6 +46,7 @@ C:\Users\you\AppData\Roaming\Claude\          Your output directory
           audit.jsonl                         │  distilled/              │
                                               │    2026-02-14_session.md │
                                               │  SESSION-INDEX.md        │
+                                              │  CATCH-UP.md             │
                                               └──────────────────────────┘
 ```
 
@@ -48,8 +55,28 @@ For each session:
 2. **Distills** into a Markdown transcript: user messages, Claude's text responses, tool summaries, metadata header
 3. **Tags** with project keywords (configurable dictionary)
 4. **Indexes** all sessions in a single `SESSION-INDEX.md` with date, name, project, model, turns, cost
+5. **Generates `CATCH-UP.md`** — a project-grouped topic index for new-chat context restoration
 
 What gets stripped during distillation: thinking blocks, tool_use JSON payloads, permission request/response pairs, cryptographic signatures, init blocks, raw tool results. Typical compression: **~95% reduction** in file size while preserving all conversational content.
+
+## ⚠️ Format Stability Warning
+
+**This tool parses an undocumented, internal data format.** Anthropic has not published a specification for Cowork's session storage. Everything here was reverse-engineered from observed behavior as of February 2026.
+
+Things that **will** change without notice: the storage directory path, the folder naming convention, the transcript filename, the JSONL entry schema.
+
+**The script is designed to detect and surface these changes rather than silently break.** On every run, it validates the session directory structure and JSONL format against expected patterns. When something doesn't match, it prints specific diagnostics and points you to the config knobs that need adjustment.
+
+| Change | Symptom | Fix |
+|--------|---------|-----|
+| Storage path moved | `Sessions directory not found` + alternative paths listed | Update `sessions_dir` in config.json |
+| Transcript file renamed | `No audit.jsonl files found` + alternative filenames listed | Update `format.transcript_filename` |
+| Folder prefix changed | `Session directory does not start with expected prefix` | Update `format.session_dir_prefix` |
+| New entry types added | `Unknown entry types: newtype(×N)` — non-fatal, entries skipped | No action needed (or update script to handle them) |
+| JSONL replaced with JSON | `Failed to parse JSONL line` + hint about single-object JSON | Script needs structural update — check repo issues |
+| Init block fields renamed | `Init block missing expected fields` — metadata may be incomplete | Update `format.expected_init_fields` |
+
+The `format` section in `config.json` exposes every assumption the script makes about the storage layout. When Anthropic changes something, you adjust the config rather than editing the script.
 
 ## Requirements
 
