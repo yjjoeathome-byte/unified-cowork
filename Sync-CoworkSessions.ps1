@@ -56,7 +56,12 @@ function Load-Config {
     # Expand environment variables in paths
     foreach ($key in @("sessions_dir", "output_dir", "state_file")) {
         if ($cfg.ContainsKey($key) -and $cfg[$key]) {
+            # Windows: expand %APPDATA% etc.
             $cfg[$key] = [Environment]::ExpandEnvironmentVariables($cfg[$key])
+            # macOS/Linux: expand ~ to home directory
+            if ($cfg[$key].StartsWith("~")) {
+                $cfg[$key] = $cfg[$key].Replace("~", [Environment]::GetFolderPath("UserProfile"))
+            }
         }
     }
 
@@ -292,6 +297,10 @@ function Load-State {
 
 function Save-State {
     param([hashtable]$State, [string]$Path)
+    $parent = Split-Path $Path -Parent
+    if ($parent -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
     $State | ConvertTo-Json -Depth 3 | Set-Content $Path -Encoding UTF8
 }
 

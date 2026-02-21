@@ -53,21 +53,46 @@ What gets stripped during distillation: thinking blocks, tool_use JSON payloads,
 
 ## Requirements
 
-- **Windows 10/11** (Cowork currently runs on Windows and macOS)
-- **PowerShell 7+** (`pwsh`) — [install here](https://aka.ms/powershell)
+- **Windows 10/11** or **macOS** (Apple Silicon or Intel)
+- **PowerShell 7+** (`pwsh`)
+  - Windows: [install here](https://aka.ms/powershell)
+  - macOS: `brew install powershell`
 - **Claude Desktop** with Cowork sessions
 
 ## Setup
 
-```powershell
-# 1. Clone the repo (or download and extract)
+```bash
+# 1. Clone the repo
 git clone https://github.com/YOUR-USERNAME/cowork-session-sync.git
 cd cowork-session-sync
 
-# 2. Create your config
-cp config.example.json config.json
-# Edit config.json — set output_dir and optionally project_tags
+# 2. Create your config from the appropriate template
 ```
+
+### Windows
+
+```powershell
+cp config.example.json config.json
+# Edit config.json — set output_dir (local path or UNC for NAS)
+# Default sessions_dir uses %APPDATA% and works out of the box
+```
+
+### macOS
+
+```bash
+cp config.example.macos.json config.json
+# Edit config.json — replace USERNAME with your macOS username
+# Set output_dir to local path or SMB mount point
+```
+
+Session storage paths by platform:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\Claude\local-agent-mode-sessions\` |
+| macOS | `~/Library/Application Support/Claude/local-agent-mode-sessions/` |
+
+> **macOS note**: `%APPDATA%` does not expand on macOS. Use absolute paths or `~` (e.g., `~/Library/Application Support/Claude/local-agent-mode-sessions`).
 
 ### Config Reference
 
@@ -105,28 +130,58 @@ Environment variables (`%APPDATA%`, `%LOCALAPPDATA%`) are expanded at runtime.
 
 ### SMB / NAS Output
 
-If `output_dir` is a UNC path (`\\server\share\...`), the script validates network connectivity before writing. Ensure:
-- The SMB share is mounted or accessible from your Windows machine
-- Your user account has write permissions on the share
-- If using a scheduled task: UNC paths work reliably; mapped drive letters (Z:, etc.) may not be available in the task's execution context
+**Windows**: use UNC paths (`\\server\share\...`). The script validates network connectivity before writing. Mapped drive letters (Z:, etc.) may not be available in scheduled task contexts — always use UNC paths.
+
+**macOS**: mount the share first, then use the mount point path.
+```bash
+# GUI: Finder → Go → Connect to Server → smb://10.0.0.5/sharename
+# CLI:
+mkdir -p /Volumes/sharename
+mount_smbfs //user@10.0.0.5/sharename /Volumes/sharename
+```
+Set `output_dir` in config.json to `/Volumes/sharename/cowork-sessions`.
+
+For auto-mount on login: System Settings → General → Login Items → add the share. For headless/server use, add an entry to `/etc/auto_master`.
 
 ## Usage
 
+### Windows
+
 ```powershell
-# Validate config and session format (no changes, no output)
+# Validate config and session format
 pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Check
 
-# Preview what would happen (no files written)
+# Preview (no files written)
 pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -DryRun
 
-# Run for real
+# Run
 pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1
 
-# Force re-process all sessions (ignores state file)
+# Force re-process all sessions
 pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Force
 ```
 
-### Automated (Scheduled Task)
+### macOS
+
+```bash
+# Validate config and session format
+pwsh -File Sync-CoworkSessions.ps1 -Check
+
+# Preview (no files written)
+pwsh -File Sync-CoworkSessions.ps1 -DryRun
+
+# Run
+pwsh -File Sync-CoworkSessions.ps1
+
+# Force re-process all sessions
+pwsh -File Sync-CoworkSessions.ps1 -Force
+```
+
+> macOS does not enforce execution policies — `-ExecutionPolicy Bypass` is not needed.
+
+### Automated Scheduling
+
+#### Windows (Scheduled Task)
 
 From an **elevated** PowerShell 7 prompt:
 
@@ -139,14 +194,30 @@ pwsh -ExecutionPolicy Bypass -File Register-CoworkSync.ps1 -IntervalMinutes 10
 
 Manage the task:
 ```powershell
-# Check status
 Get-ScheduledTaskInfo -TaskName 'CoworkSessionSync'
+Start-ScheduledTask -TaskName 'CoworkSessionSync'          # run now
+Unregister-ScheduledTask -TaskName 'CoworkSessionSync'     # remove
+```
 
-# Run now
-Start-ScheduledTask -TaskName 'CoworkSessionSync'
+#### macOS (launchd)
 
-# Remove
-Unregister-ScheduledTask -TaskName 'CoworkSessionSync'
+1. Edit `com.cowork-sync.agent.plist`:
+   - Update the path to `pwsh` (Apple Silicon: `/opt/homebrew/bin/pwsh`, Intel: `/usr/local/bin/pwsh`)
+   - Update the path to `Sync-CoworkSessions.ps1`
+   - Update `WorkingDirectory` to the repo directory
+
+2. Install and load:
+```bash
+cp com.cowork-sync.agent.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.cowork-sync.agent.plist
+```
+
+Manage the agent:
+```bash
+launchctl list | grep cowork-sync                          # verify loaded
+launchctl start com.cowork-sync.agent                      # run now
+cat /tmp/cowork-sync.log                                   # check output
+launchctl unload ~/Library/LaunchAgents/com.cowork-sync.agent.plist  # stop
 ```
 
 ## Output Structure

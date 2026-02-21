@@ -1,0 +1,26 @@
+{
+    "_comment": "macOS example — copy to config.json. Tilde (~) expands to your home directory.",
+
+    "sessions_dir": "~/Library/Application Support/Claude/local-agent-mode-sessions",
+
+    "output_dir": "~/Documents/cowork-sessions",
+
+    "state_file": "~/.local/share/cowork-sync-state.json",
+
+    "project_tags": {
+        "my-project": [
+            "keyword1",
+            "keyword2",
+            "specific-tool-name"
+        ]
+    },
+
+    "format": {
+        "_comment": "Do not edit unless you know the Cowork session format has changed.",
+        "session_dir_prefix": "local_",
+        "transcript_filename": "audit.jsonl",
+        "min_file_size_bytes": 1024,
+        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary"],
+        "expected_init_fields": ["session_id", "model", "cwd", "mcp_servers"]
+    }
+}

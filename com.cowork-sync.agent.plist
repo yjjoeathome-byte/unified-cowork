@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Cowork Session Sync — macOS launchd agent
+
+    Runs Sync-CoworkSessions.ps1 every 5 minutes (300 seconds).
+
+    Setup:
+      1. Edit the ProgramArguments paths below to match your environment
+      2. Copy to ~/Library/LaunchAgents/
+      3. Load:   launchctl load ~/Library/LaunchAgents/com.cowork-sync.agent.plist
+      4. Verify: launchctl list | grep cowork-sync
+
+    Management:
+      Stop:     launchctl unload ~/Library/LaunchAgents/com.cowork-sync.agent.plist
+      Logs:     cat /tmp/cowork-sync.log
+      Test now: launchctl start com.cowork-sync.agent
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cowork-sync.agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Path to PowerShell 7 (brew install powershell) -->
+        <!-- Apple Silicon default: -->
+        <string>/opt/homebrew/bin/pwsh</string>
+        <!-- Intel Mac: /usr/local/bin/pwsh -->
+
+        <string>-NoProfile</string>
+        <string>-NonInteractive</string>
+        <string>-File</string>
+
+        <!-- Path to the sync script — UPDATE THIS -->
+        <string>/Users/USERNAME/path/to/cowork-session-sync/Sync-CoworkSessions.ps1</string>
+    </array>
+
+    <!-- Run every 300 seconds (5 minutes) -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <!-- Redirect stdout/stderr to a log file -->
+    <key>StandardOutPath</key>
+    <string>/tmp/cowork-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/cowork-sync.log</string>
+
+    <!-- Don't keep retrying if the script fails -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Set a working directory (where config.json lives) -->
+    <key>WorkingDirectory</key>
+    <string>/Users/USERNAME/path/to/cowork-session-sync</string>
+</dict>
+</plist>
