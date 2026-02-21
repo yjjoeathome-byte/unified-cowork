@@ -20,6 +20,7 @@ It watches the local Cowork session storage directory, copies raw `audit.jsonl` 
 ```
 ├── CLAUDE.md                       ← You are here (project instructions for Claude)
 ├── README.md                       ← User-facing documentation
+├── SECURITY.md                     ← Security considerations and vulnerability reporting
 ├── Sync-CoworkSessions.ps1         ← Main sync + distillation script (cross-platform)
 ├── Register-CoworkSync.ps1         ← Windows Scheduled Task registration
 ├── com.cowork-sync.agent.plist     ← macOS launchd agent (scheduling)
