@@ -49,7 +49,7 @@ For each session:
 3. **Tags** with project keywords (configurable dictionary)
 4. **Indexes** all sessions in a single `SESSION-INDEX.md` with date, name, project, model, turns, cost
 
-What gets stripped during distillation: thinking blocks, tool_use JSON payloads, permission request/response pairs, cryptographic signatures, init blocks, raw tool results. Typical compression: **80–90% reduction** in file size while preserving all conversational content.
+What gets stripped during distillation: thinking blocks, tool_use JSON payloads, permission request/response pairs, cryptographic signatures, init blocks, raw tool results. Typical compression: **~95% reduction** in file size while preserving all conversational content.
 
 ## Requirements
 
@@ -63,8 +63,8 @@ What gets stripped during distillation: thinking blocks, tool_use JSON payloads,
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR-USERNAME/cowork-session-sync.git
-cd cowork-session-sync
+git clone https://github.com/yjjoeathome-byte/unified-cowork.git
+cd unified-cowork
 
 # 2. Create your config from the appropriate template
 ```
@@ -345,7 +345,7 @@ State tracking uses SHA256 hashes stored in a local JSON file. Only changed file
 
 ## License
 
-MIT
+GPL-3.0 — see [LICENSE](LICENSE) for full text.
 
 ## Disclaimer
 

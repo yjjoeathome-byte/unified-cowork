@@ -23,9 +23,10 @@ It watches the local Cowork session storage directory, copies raw `audit.jsonl` 
 ├── Sync-CoworkSessions.ps1         ← Main sync + distillation script (cross-platform)
 ├── Register-CoworkSync.ps1         ← Windows Scheduled Task registration
 ├── com.cowork-sync.agent.plist     ← macOS launchd agent (scheduling)
-├── config.example.json             ← Template config (user copies to config.json)
+├── config.example.json             ← Template config for Windows (user copies to config.json)
+├── config.example.macos.json       ← Template config for macOS
 ├── .gitignore                      ← Excludes config.json, raw/, distilled/, SESSION-INDEX.md
-└── LICENSE                         ← MIT
+└── LICENSE                         ← GPL-3.0
 ```
 
 ## Key Design Decisions (do not re-litigate)
