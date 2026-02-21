@@ -26,9 +26,22 @@ It watches the local Cowork session storage directory, copies raw `audit.jsonl` 
 ├── com.cowork-sync.agent.plist     ← macOS launchd agent (scheduling)
 ├── config.example.json             ← Template config for Windows (user copies to config.json)
 ├── config.example.macos.json       ← Template config for macOS
+├── examples/
+│   └── catch-up-protocol.md        ← CLAUDE.md template for session catch-up on new chats
 ├── .gitignore                      ← Excludes config.json, raw/, distilled/, SESSION-INDEX.md
 └── LICENSE                         ← GPL-3.0
 ```
+
+## Output Files
+
+The pipeline generates the following in the output directory:
+
+| File | Purpose |
+|------|---------|
+| `SESSION-INDEX.md` | Full session index table (date, name, project, model, turns, cost, links) |
+| `CATCH-UP.md` | Lightweight catch-up index grouped by project with topic lines. Designed for consumption by CLAUDE.md catch-up protocol — cheap to load, gives a new session enough context to offer restoration. |
+| `raw/*.jsonl` | Verbatim copies of `audit.jsonl` files |
+| `distilled/*.md` | Clean Markdown transcripts (text only, no tool_use JSON or thinking blocks) |
 
 ## Key Design Decisions (do not re-litigate)
 
@@ -39,6 +52,8 @@ It watches the local Cowork session storage directory, copies raw `audit.jsonl` 
 5. **Raw archive is always kept**: distillation is lossy by design (strips thinking blocks, tool_use JSON, signatures). The raw copy is the safety net.
 6. **State tracking via SHA256**: only changed files are reprocessed. State file is local to the machine.
 7. **Cross-platform via PowerShell 7**: one script, two scheduling mechanisms. No bash port needed — pwsh runs natively on macOS.
+8. **Catch-up index is heuristic, not LLM-generated**: topic extraction uses the first user message (truncated to 120 chars). No API calls, no inference cost. Good enough for a menu; the distilled file provides full context when selected.
+9. **CATCH-UP.md is a separate file from SESSION-INDEX.md**: the index is a flat table for reference; the catch-up file is grouped by project for consumption by the CLAUDE.md protocol. Different audiences, different formats.
 
 ## When Helping Users
 

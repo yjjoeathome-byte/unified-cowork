@@ -5,6 +5,7 @@ config.json
 raw/
 distilled/
 SESSION-INDEX.md
+CATCH-UP.md
 
 # State file (if co-located)
 *-state.json
