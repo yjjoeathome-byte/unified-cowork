@@ -1,0 +1,10 @@
+# User config (contains local paths)
+config.json
+
+# Session data (never commit)
+raw/
+distilled/
+SESSION-INDEX.md
+
+# State file (if co-located)
+*-state.json

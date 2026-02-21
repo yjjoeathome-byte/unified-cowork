@@ -1,0 +1,29 @@
+{
+    "_comment": "Copy this file to config.json and edit to match your environment.",
+
+    "sessions_dir": "%APPDATA%\\Claude\\local-agent-mode-sessions",
+
+    "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\cowork-sessions",
+
+    "state_file": "%LOCALAPPDATA%\\cowork-sync-state.json",
+
+    "project_tags": {
+        "my-project": [
+            "keyword1",
+            "keyword2",
+            "specific-tool-name"
+        ],
+        "another-project": [
+            "other-keyword"
+        ]
+    },
+
+    "format": {
+        "_comment": "Do not edit unless you know the Cowork session format has changed.",
+        "session_dir_prefix": "local_",
+        "transcript_filename": "audit.jsonl",
+        "min_file_size_bytes": 1024,
+        "expected_entry_types": ["system", "user", "assistant", "result", "tool_use_summary"],
+        "expected_init_fields": ["session_id", "model", "cwd", "mcp_servers"]
+    }
+}
