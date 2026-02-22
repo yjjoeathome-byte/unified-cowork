@@ -30,6 +30,8 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 
 **Windows access is read-only.** The SMB-mapped `Z:\` view of the repo shows the SSH remote URL but cannot push (no deploy key, NFS permission denied on `.git/config`). This is by design — node03 pushes, Windows reads.
 
+**Git operations are delegated to Claude.** The repo owner is not a git specialist. Claude sessions should handle all git operations (commit, push, branch, merge, rebase) via ssh-relay on node03 without requiring manual git commands from the user. Ask the user for decisions (merge strategy, commit scope) but execute the commands autonomously.
+
 **Working directory hygiene:** Windows Explorer creates `Thumbs.db`, `Zone.Identifier`, and CRLF artifacts on the NFS share. These are not tracked — ignore them in `git status`. If CRLF diffs appear on all files, run `git checkout -- .` to reset.
 
 ## Platform Support

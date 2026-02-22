@@ -1,0 +1,56 @@
+name: Format Change Detected
+description: Cowork session storage format appears to have changed
+labels: ["format-change"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Anthropic does not publish a schema for the Cowork session format.
+        This project maintains a community spec in `cowork-audit-jsonl-format-reference.md`.
+        If you've detected a change, this report helps everyone.
+
+  - type: textarea
+    id: check-output
+    attributes:
+      label: Output of --check
+      description: "Run `python3 cowork_sync.py --check` and paste the full output."
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-changed
+    attributes:
+      label: What changed?
+      description: "Describe what you observed — new entry types, renamed fields, different directory structure, etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Redacted sample
+      description: "If possible, paste a redacted snippet of the new format (remove session IDs, file paths, personal content)."
+      render: json
+    validations:
+      required: false
+
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Desktop version
+      description: "Found in Claude Desktop → About"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+    validations:
+      required: true
