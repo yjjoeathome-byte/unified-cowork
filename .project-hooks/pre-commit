@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+FAILED=0
+
+# ============================================================================
+# 1. Run project tests
+# ============================================================================
+echo -e "${YELLOW}[project-hook] Running tests...${NC}"
+
+if (cd "$REPO_ROOT" && python3 -m unittest test_cowork_sync -v 2>&1); then
+    echo -e "${GREEN}[project-hook] All tests passed.${NC}"
+else
+    echo -e "${RED}[project-hook] Tests failed.${NC}"
+    FAILED=1
+fi
+
+# ============================================================================
+# 2. Verify CLAUDE.md references all tracked files
+# ============================================================================
+echo ""
+echo -e "${YELLOW}[project-hook] Checking CLAUDE.md completeness...${NC}"
+
+TRACKED_FILES=$(cd "$REPO_ROOT" && git ls-files -- '*.py' '*.ps1' '*.plist' '*.json' '*.md' '.gitignore' 2>/dev/null | sort)
+MISSING_FROM_DOCS=0
+
+for file in $TRACKED_FILES; do
+    case "$file" in
+        test_*|config.json) continue ;;
+    esac
+    if [ -f "$REPO_ROOT/CLAUDE.md" ] && ! grep -q "$(basename "$file")" "$REPO_ROOT/CLAUDE.md" 2>/dev/null; then
+        echo -e "${YELLOW}[project-hook] WARNING: $file not referenced in CLAUDE.md${NC}"
+        MISSING_FROM_DOCS=1
+    fi
+done
+
+if [ $MISSING_FROM_DOCS -eq 0 ]; then
+    echo -e "${GREEN}[project-hook] Docs look consistent.${NC}"
+fi
+
+# ============================================================================
+# Final verdict
+# ============================================================================
+if [ $FAILED -ne 0 ]; then
+    exit 1
+fi
+
+exit 0
