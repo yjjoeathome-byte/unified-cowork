@@ -30,12 +30,13 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 
 ## Platform Support
 
-| | Windows | macOS |
-|---|---------|-------|
-| Session path | `%APPDATA%\Claude\local-agent-mode-sessions\` | `~/Library/Application Support/Claude/local-agent-mode-sessions/` |
-| Scheduling | Windows Scheduled Task (`Register-CoworkSync.ps1`) | launchd (`com.cowork-sync.agent.plist`) |
-| SMB output | UNC paths: `\\server\share\path` | Mount paths: `/Volumes/sharename/path` |
-| Runtime | PowerShell 7+ (`pwsh`) | PowerShell 7+ (`brew install powershell`) |
+| | Windows | macOS | Linux |
+|---|---------|-------|-------|
+| Session path | `%APPDATA%\Claude\local-agent-mode-sessions\` | `~/Library/Application Support/Claude/local-agent-mode-sessions/` | `~/.config/Claude/local-agent-mode-sessions/` |
+| Scheduling | Windows Scheduled Task (`Register-CoworkSync.ps1`) | launchd (`com.cowork-sync.python.plist`) | cron |
+| SMB output | UNC paths: `\\server\share\path` | Mount paths: `/Volumes/sharename/path` | Mount paths (e.g., `/mnt/nas/path`) |
+| Runtime (primary) | Python 3.8+ | Python 3 (bundled with macOS 12.3+) | Python 3 |
+| Runtime (alt) | PowerShell 7+ (`pwsh`) | PowerShell 7+ (`brew install powershell`) | PowerShell 7+ |
 
 ## Repo Structure
 
@@ -43,11 +44,14 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 ├── CLAUDE.md                       ← You are here (project instructions for Claude)
 ├── README.md                       ← User-facing documentation
 ├── SECURITY.md                     ← Security considerations and vulnerability reporting
-├── Sync-CoworkSessions.ps1         ← Main sync + distillation script (cross-platform)
-├── Register-CoworkSync.ps1         ← Windows Scheduled Task registration
-├── com.cowork-sync.agent.plist     ← macOS launchd agent (scheduling)
-├── config.example.json             ← Template config for Windows (user copies to config.json)
-├── config.example.macos.json       ← Template config for macOS
+├── cowork_sync.py                  ← Main sync + distillation script (Python 3, primary)
+├── Sync-CoworkSessions.ps1         ← Alternative sync script (PowerShell 7)
+├── Register-CoworkSync.ps1         ← Windows Scheduled Task registration (PowerShell)
+├── com.cowork-sync.python.plist    ← macOS launchd agent (Python)
+├── com.cowork-sync.agent.plist     ← macOS launchd agent (PowerShell, alternative)
+├── config.example.json             ← Template config — Windows
+├── config.example.macos.json       ← Template config — macOS
+├── config.example.linux.json       ← Template config — Linux
 ├── examples/
 │   └── catch-up-protocol.md        ← CLAUDE.md template for session catch-up on new chats
 ├── .gitignore                      ← Excludes config.json, raw/, distilled/, SESSION-INDEX.md
@@ -73,7 +77,7 @@ The pipeline generates the following in the output directory:
 4. **Project tagging is keyword-based**: no NLP, no external deps. Dictionary in config.json, case-insensitive substring match. Sessions can match multiple projects.
 5. **Raw archive is always kept**: distillation is lossy by design (strips thinking blocks, tool_use JSON, signatures). The raw copy is the safety net.
 6. **State tracking via SHA256**: only changed files are reprocessed. State file is local to the machine.
-7. **Cross-platform via PowerShell 7**: one script, two scheduling mechanisms. No bash port needed — pwsh runs natively on macOS.
+7. **Cross-platform via Python 3 stdlib**: one script, three scheduling mechanisms. Python 3.8+ with no pip dependencies. PowerShell 7 version kept as an alternative.
 8. **Catch-up index is heuristic, not LLM-generated**: topic extraction uses the first user message (truncated to 120 chars). No API calls, no inference cost. Good enough for a menu; the distilled file provides full context when selected.
 9. **CATCH-UP.md is a separate file from SESSION-INDEX.md**: the index is a flat table for reference; the catch-up file is grouped by project for consumption by the CLAUDE.md protocol. Different audiences, different formats.
 
@@ -81,39 +85,62 @@ The pipeline generates the following in the output directory:
 
 If a user opens this repo in Cowork and asks for help:
 
-### macOS Setup
-1. Install PowerShell 7: `brew install powershell`
-2. Copy `config.example.json` to `config.json`
+### macOS Setup (Python — recommended)
+1. Python 3 is bundled with macOS 12.3+ — no install needed.
+2. Copy `config.example.macos.json` to `config.json`
 3. Set `sessions_dir` to `~/Library/Application Support/Claude/local-agent-mode-sessions`
    - Tilde (`~`) is expanded to the home directory at runtime.
    - `%APPDATA%` style variables do NOT work on macOS.
 4. Set `output_dir` to local path or SMB mount point (e.g., `/Volumes/nas-share/cowork-sessions`)
 5. Set `state_file` to `~/.local/share/cowork-sync-state.json` or any writable path
-6. Test: `pwsh -File Sync-CoworkSessions.ps1 -Check`
-7. Run: `pwsh -File Sync-CoworkSessions.ps1 -DryRun`
-8. Schedule: edit `com.cowork-sync.agent.plist` (update paths), then:
+6. Test: `python3 cowork_sync.py --check`
+7. Run: `python3 cowork_sync.py --dry-run`
+8. Schedule: edit `com.cowork-sync.python.plist` (update paths), then:
    ```bash
-   cp com.cowork-sync.agent.plist ~/Library/LaunchAgents/
-   launchctl load ~/Library/LaunchAgents/com.cowork-sync.agent.plist
+   cp com.cowork-sync.python.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/com.cowork-sync.python.plist
    ```
 
+### macOS Setup (PowerShell — alternative)
+1. Install PowerShell 7: `brew install powershell`
+2. Copy `config.example.macos.json` to `config.json`
+3. Same config as above.
+4. Test: `pwsh -File Sync-CoworkSessions.ps1 -Check`
+5. Run: `pwsh -File Sync-CoworkSessions.ps1 -DryRun`
+6. Schedule: use `com.cowork-sync.agent.plist` instead.
+
 ### Windows Setup
-1. Install PowerShell 7: https://aka.ms/powershell
+1. Python 3.8+: https://www.python.org/downloads/ (or use the Microsoft Store)
 2. Copy `config.example.json` to `config.json`
 3. Set `sessions_dir` to `%APPDATA%\Claude\local-agent-mode-sessions` (default, usually works)
 4. Set `output_dir` to local path or UNC: `\\server\share\path\cowork-sessions`
-5. Test: `pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Check`
-6. Run: `pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -DryRun`
-7. Schedule (elevated prompt): `pwsh -ExecutionPolicy Bypass -File Register-CoworkSync.ps1`
+5. Test: `python cowork_sync.py --check`
+6. Run: `python cowork_sync.py --dry-run`
+7. Schedule: use Windows Task Scheduler to run `python cowork_sync.py` on an interval.
+   - PowerShell alternative: `pwsh -ExecutionPolicy Bypass -File Register-CoworkSync.ps1`
+
+### Linux Setup
+1. Python 3 is pre-installed on most distributions.
+2. Copy `config.example.linux.json` to `config.json`
+3. Set `sessions_dir` to `~/.config/Claude/local-agent-mode-sessions`
+4. Set `output_dir` to local path or mount point (e.g., `/mnt/nas/cowork-sessions`)
+5. Test: `python3 cowork_sync.py --check`
+6. Run: `python3 cowork_sync.py --dry-run`
+7. Schedule via cron:
+   ```bash
+   crontab -e
+   # Add: run every 5 minutes
+   */5 * * * * cd /path/to/cowork-session-sync && python3 cowork_sync.py >> /tmp/cowork-sync.log 2>&1
+   ```
 
 ### Troubleshooting Format Changes
-If Anthropic changes the Cowork session format, the script's `--Check` flag will print specific diagnostics. Guide the user to adjust the `format` section in `config.json`:
+If Anthropic changes the Cowork session format, the script's `--check` flag (Python) or `-Check` flag (PowerShell) will print specific diagnostics. Guide the user to adjust the `format` section in `config.json`:
 - `session_dir_prefix`: folder name prefix (currently `local_`)
 - `transcript_filename`: transcript file name (currently `audit.jsonl`)
 - `expected_entry_types`: JSONL entry type values
 - `expected_init_fields`: fields expected in the init block
 
-Do NOT guess at format changes. Run `-Check`, read the output, and adjust based on what the script actually found.
+Do NOT guess at format changes. Run `--check` (or `-Check` for PowerShell), read the output, and adjust based on what the script actually found.
 
 ### SMB on macOS
 macOS mounts SMB shares under `/Volumes/`. To mount:
@@ -127,12 +154,21 @@ Auto-mount on login: System Settings → General → Login Items → add the sha
 
 ## Code Style
 
+### Python (`cowork_sync.py`)
+- Python 3.8+ stdlib only — no pip dependencies
+- Functions use `snake_case` (PEP 8)
+- Colored output via `TermColor` class — auto-detects TTY, VT100 on Windows
+- Error handling via early `sys.exit(1)` with diagnostic messages
+
+### PowerShell (`Sync-CoworkSessions.ps1`)
 - PowerShell 7+ only (no Windows PowerShell 5.1 compatibility needed)
 - Functions use PascalCase with `-` verb prefix (PowerShell convention)
 - Error handling via `$ErrorActionPreference = "Stop"` + targeted try/catch
-- All user-facing output goes through `Write-Host` with color coding:
+
+### Both
+- All user-facing output uses color coding:
   - Green: success
   - Yellow: dry run / warning
   - Red: error
-  - DarkCyan: informational metrics
+  - Cyan: informational metrics
   - White: processing status

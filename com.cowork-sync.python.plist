@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Cowork Session Sync — macOS launchd agent (Python version)
+
+    Runs cowork_sync.py every 5 minutes (300 seconds) using the system Python 3
+    bundled with macOS 12.3+. No additional runtime install required.
+
+    Setup:
+      1. Edit the ProgramArguments path below to match your repo location
+      2. Copy to ~/Library/LaunchAgents/
+      3. Load:   launchctl load ~/Library/LaunchAgents/com.cowork-sync.python.plist
+      4. Verify: launchctl list | grep cowork-sync
+
+    Management:
+      Stop:     launchctl unload ~/Library/LaunchAgents/com.cowork-sync.python.plist
+      Logs:     cat /tmp/cowork-sync.log
+      Test now: launchctl start com.cowork-sync.python
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cowork-sync.python</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- System Python 3 (bundled with macOS 12.3+) -->
+        <string>/usr/bin/python3</string>
+
+        <string>/Users/airm2max/scripts/unified-cowork/cowork_sync.py</string>
+    </array>
+
+    <!-- Run every 300 seconds (5 minutes) -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <!-- Redirect stdout/stderr to a log file -->
+    <key>StandardOutPath</key>
+    <string>/tmp/cowork-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/cowork-sync.log</string>
+
+    <!-- Don't keep retrying if the script fails -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Set a working directory (where config.json lives) -->
+    <key>WorkingDirectory</key>
+    <string>/Users/airm2max/scripts/unified-cowork</string>
+</dict>
+</plist>

@@ -8,3 +8,20 @@ SESSION-INDEX.md
 
 # State file (if co-located)
 *-state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.log

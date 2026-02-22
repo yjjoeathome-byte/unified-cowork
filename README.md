@@ -54,16 +54,16 @@ See [Session Catch-Up](#session-catch-up-new-chat-bootstrap) below for full setu
 ## What It Does
 
 ```
-C:\Users\you\AppData\Roaming\Claude\          Your output directory
-  local-agent-mode-sessions\                    (local or SMB/NAS)
-    {account-uuid}\                           ┌──────────────────────────┐
-      {project-uuid}\                         │  raw/                    │
-        local_{session-uuid}\    ──────►      │    2026-02-14_session.jsonl
-          audit.jsonl                         │  distilled/              │
-                                              │    2026-02-14_session.md │
-                                              │  SESSION-INDEX.md        │
-                                              │  CATCH-UP.md             │
-                                              └──────────────────────────┘
+Session storage directory                 Your output directory
+  {account-uuid}/                         (local or SMB/NAS)
+    {project-uuid}/                     ┌──────────────────────────┐
+      local_{session-uuid}/    ──────►  │  raw/                    │
+        audit.jsonl                     │    2026-02-14_session.jsonl
+                                        │  distilled/              │
+                                        │    2026-02-14_session.md │
+                                        │  SESSION-INDEX.md        │
+                                        │  CATCH-UP.md             │
+                                        └──────────────────────────┘
 ```
 
 For each session:
@@ -110,11 +110,13 @@ See also: [anthropics/claude-code#27724](https://github.com/anthropics/claude-co
 
 ## Requirements
 
-- **Windows 10/11** or **macOS** (Apple Silicon or Intel)
-- **PowerShell 7+** (`pwsh`)
-  - Windows: [install here](https://aka.ms/powershell)
-  - macOS: `brew install powershell`
+- **Python 3.8+** (primary — stdlib only, no pip dependencies)
+  - macOS 12.3+: bundled as `/usr/bin/python3`
+  - Linux: pre-installed on most distributions
+  - Windows: [python.org](https://www.python.org/downloads/) or Microsoft Store
 - **Claude Desktop** with Cowork sessions
+
+**Alternative runtime**: PowerShell 7+ (`pwsh`) — the original `Sync-CoworkSessions.ps1` is still included for users who prefer it.
 
 ## Setup
 
@@ -138,8 +140,14 @@ cp config.example.json config.json
 
 ```bash
 cp config.example.macos.json config.json
-# Edit config.json — replace USERNAME with your macOS username
-# Set output_dir to local path or SMB mount point
+# Edit config.json — set output_dir to local path or SMB mount point
+```
+
+### Linux
+
+```bash
+cp config.example.linux.json config.json
+# Edit config.json — set output_dir to local path or mount point
 ```
 
 Session storage paths by platform:
@@ -148,6 +156,7 @@ Session storage paths by platform:
 |----------|------|
 | Windows | `%APPDATA%\Claude\local-agent-mode-sessions\` |
 | macOS | `~/Library/Application Support/Claude/local-agent-mode-sessions/` |
+| Linux | `~/.config/Claude/local-agent-mode-sessions/` |
 
 > **macOS note**: `%APPDATA%` does not expand on macOS. Use absolute paths or `~` (e.g., `~/Library/Application Support/Claude/local-agent-mode-sessions`).
 
@@ -155,16 +164,17 @@ Session storage paths by platform:
 
 ```jsonc
 {
-    // Where Cowork stores sessions (default works for Windows as of Feb 2026)
-    "sessions_dir": "%APPDATA%\\Claude\\local-agent-mode-sessions",
+    // Where Cowork stores sessions
+    "sessions_dir": "~/Library/Application Support/Claude/local-agent-mode-sessions",
 
     // Where to write archives and distilled transcripts
-    // Local path:  "C:\\Users\\you\\Documents\\cowork-sessions"
-    // SMB/NAS:     "\\\\10.0.0.5\\share\\cowork-sessions"
-    "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\cowork-sessions",
+    // Local path:  "~/Documents/cowork-sessions"
+    // SMB/NAS:     "/Volumes/sharename/cowork-sessions" (macOS)
+    //              "\\\\10.0.0.5\\share\\cowork-sessions" (Windows UNC)
+    "output_dir": "~/Documents/cowork-sessions",
 
     // State file for tracking processed sessions (default is fine)
-    "state_file": "%LOCALAPPDATA%\\cowork-sync-state.json",
+    "state_file": "~/.local/share/cowork-sync-state.json",
 
     // Tag sessions by keyword (optional, can be empty {})
     "project_tags": {
@@ -183,7 +193,7 @@ Session storage paths by platform:
 }
 ```
 
-Environment variables (`%APPDATA%`, `%LOCALAPPDATA%`) are expanded at runtime.
+Environment variables (`%APPDATA%`, `%LOCALAPPDATA%`) are expanded at runtime on Windows. Tilde (`~`) is expanded on all platforms.
 
 ### SMB / NAS Output
 
@@ -191,52 +201,116 @@ Environment variables (`%APPDATA%`, `%LOCALAPPDATA%`) are expanded at runtime.
 
 **macOS**: mount the share first, then use the mount point path.
 ```bash
-# GUI: Finder → Go → Connect to Server → smb://10.0.0.5/sharename
+# GUI: Finder -> Go -> Connect to Server -> smb://10.0.0.5/sharename
 # CLI:
 mkdir -p /Volumes/sharename
 mount_smbfs //user@10.0.0.5/sharename /Volumes/sharename
 ```
 Set `output_dir` in config.json to `/Volumes/sharename/cowork-sessions`.
 
-For auto-mount on login: System Settings → General → Login Items → add the share. For headless/server use, add an entry to `/etc/auto_master`.
+For auto-mount on login: System Settings -> General -> Login Items -> add the share. For headless/server use, add an entry to `/etc/auto_master`.
+
+**Linux**: mount the share, then use the mount point path.
+```bash
+sudo mount -t cifs //10.0.0.5/sharename /mnt/nas -o username=user,uid=$(id -u)
+```
+Set `output_dir` to `/mnt/nas/cowork-sessions`. For persistent mounts, add to `/etc/fstab`.
 
 ## Usage
 
-### Windows
-
-```powershell
-# Validate config and session format
-pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Check
-
-# Preview (no files written)
-pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -DryRun
-
-# Run
-pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1
-
-# Force re-process all sessions
-pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Force
-```
-
-### macOS
-
 ```bash
 # Validate config and session format
-pwsh -File Sync-CoworkSessions.ps1 -Check
+python3 cowork_sync.py --check
 
 # Preview (no files written)
-pwsh -File Sync-CoworkSessions.ps1 -DryRun
+python3 cowork_sync.py --dry-run
 
 # Run
-pwsh -File Sync-CoworkSessions.ps1
+python3 cowork_sync.py
 
 # Force re-process all sessions
-pwsh -File Sync-CoworkSessions.ps1 -Force
+python3 cowork_sync.py --force
+
+# Use a custom config file
+python3 cowork_sync.py -c /path/to/config.json
 ```
 
-> macOS does not enforce execution policies — `-ExecutionPolicy Bypass` is not needed.
+> **Windows**: use `python` instead of `python3` if that's how Python is installed.
+
+<details>
+<summary>PowerShell alternative</summary>
+
+```powershell
+# Windows
+pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Check
+pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -DryRun
+pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1
+pwsh -ExecutionPolicy Bypass -File Sync-CoworkSessions.ps1 -Force
+
+# macOS (requires: brew install powershell)
+pwsh -File Sync-CoworkSessions.ps1 -Check
+pwsh -File Sync-CoworkSessions.ps1 -DryRun
+pwsh -File Sync-CoworkSessions.ps1
+```
+</details>
 
 ### Automated Scheduling
+
+#### macOS (launchd)
+
+macOS uses **launchd** agents for scheduled tasks (the equivalent of Windows Scheduled Tasks or Linux cron). The plist file tells launchd what to run, how often, and where to log output.
+
+**Prerequisites**: Run the script manually first to verify it works:
+```bash
+python3 cowork_sync.py --check
+python3 cowork_sync.py --dry-run
+python3 cowork_sync.py
+```
+
+**Setup**:
+
+1. Edit `com.cowork-sync.python.plist` — update paths to match your environment:
+   - `ProgramArguments`: path to `cowork_sync.py`
+   - `WorkingDirectory`: the repo directory (where `config.json` lives)
+
+2. Install and load the agent:
+```bash
+# Copy the plist to the LaunchAgents directory
+cp com.cowork-sync.python.plist ~/Library/LaunchAgents/
+
+# Load the agent (starts the 5-minute schedule)
+launchctl load ~/Library/LaunchAgents/com.cowork-sync.python.plist
+
+# Verify it's loaded
+launchctl list | grep cowork-sync
+```
+
+**Management**:
+```bash
+launchctl start com.cowork-sync.python                                # run now (don't wait for interval)
+cat /tmp/cowork-sync.log                                              # check output / errors
+launchctl unload ~/Library/LaunchAgents/com.cowork-sync.python.plist  # stop the scheduled agent
+```
+
+**Change the interval**: edit `StartInterval` in the plist (value is in seconds, default 300 = 5 minutes), then unload and reload:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.cowork-sync.python.plist
+launchctl load ~/Library/LaunchAgents/com.cowork-sync.python.plist
+```
+
+**Uninstall**:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.cowork-sync.python.plist
+rm ~/Library/LaunchAgents/com.cowork-sync.python.plist
+```
+
+#### Linux (cron)
+
+```bash
+crontab -e
+# Add this line (runs every 5 minutes):
+*/5 * * * * cd /path/to/cowork-session-sync && python3 cowork_sync.py >> /tmp/cowork-sync.log 2>&1
+```
 
 #### Windows (Scheduled Task)
 
@@ -258,27 +332,6 @@ Manage the task:
 Get-ScheduledTaskInfo -TaskName 'CoworkSessionSync'
 Start-ScheduledTask -TaskName 'CoworkSessionSync'          # run now
 Unregister-ScheduledTask -TaskName 'CoworkSessionSync'     # remove
-```
-
-#### macOS (launchd)
-
-1. Edit `com.cowork-sync.agent.plist`:
-   - Update the path to `pwsh` (Apple Silicon: `/opt/homebrew/bin/pwsh`, Intel: `/usr/local/bin/pwsh`)
-   - Update the path to `Sync-CoworkSessions.ps1`
-   - Update `WorkingDirectory` to the repo directory
-
-2. Install and load:
-```bash
-cp com.cowork-sync.agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.cowork-sync.agent.plist
-```
-
-Manage the agent:
-```bash
-launchctl list | grep cowork-sync                          # verify loaded
-launchctl start com.cowork-sync.agent                      # run now
-cat /tmp/cowork-sync.log                                   # check output
-launchctl unload ~/Library/LaunchAgents/com.cowork-sync.agent.plist  # stop
 ```
 
 ## Output Structure
@@ -405,23 +458,28 @@ Reading `CATCH-UP.md` costs a few hundred tokens. Loading the header of a distil
 ## Troubleshooting
 
 ### "No new or modified sessions"
-The script tracks files by SHA256 hash. If nothing changed since the last run, there's nothing to do. Use `-Force` to re-process everything.
+The script tracks files by SHA256 hash. If nothing changed since the last run, there's nothing to do. Use `--force` to re-process everything.
 
 ### "Sessions directory not found"
-Anthropic moved the storage path. The script will list alternative paths it found under `%APPDATA%\Claude\`. Update `sessions_dir` in your config.
+Anthropic moved the storage path. The script will list alternative paths it found. Update `sessions_dir` in your config.
 
 ### "Cannot reach server" (SMB output)
 The NAS/server at the UNC path is unreachable. Check network connectivity and share permissions.
 
 ### Scheduled task runs but nothing happens
-Check `LastTaskResult`: `0` = success, non-zero = error.
+**macOS**: check `/tmp/cowork-sync.log` for errors.
+**Linux**: check the cron log or the redirect target.
+**Windows**: check `LastTaskResult`: `0` = success, non-zero = error.
 ```powershell
 Get-ScheduledTaskInfo -TaskName 'CoworkSessionSync' | Select LastRunTime, LastTaskResult
 ```
-Common issue: the task can't resolve the script path. Use UNC paths, not mapped drive letters.
 
 ### Unknown entry types warning
 Non-fatal. Cowork added new entry types the script doesn't handle yet. The entries are skipped but everything else works. Check the repo for script updates.
+
+## State File Compatibility
+
+The Python script (`cowork_sync.py`) and the PowerShell script (`Sync-CoworkSessions.ps1`) share the same state file format. SHA256 hashes are uppercased in both implementations, so you can switch between runtimes without reprocessing all sessions.
 
 ## How It Works (Technical)
 
@@ -436,6 +494,122 @@ Entry types handled:
 - `result`: cost and end timestamp extraction
 
 State tracking uses SHA256 hashes stored in a local JSON file. Only changed files are re-processed on each run.
+
+## Architecture: Python Rewrite Plan
+
+This section documents the design decisions and implementation details of the Python 3 rewrite (`cowork_sync.py`), which replaced PowerShell 7 as the primary runtime.
+
+### Motivation
+
+The original `Sync-CoworkSessions.ps1` requires installing PowerShell 7 (`pwsh`) on macOS and Linux. Python 3 is bundled with macOS 12.3+ and pre-installed on most Linux distributions, making it a zero-install dependency for the majority of users.
+
+### Design Constraints
+
+- **Python 3.8+ stdlib only** — no pip dependencies. The script must run on any system with a Python 3.8+ interpreter.
+- **Behavioral parity** — the Python script must produce identical output (distilled Markdown, session index, state file) to the PowerShell version.
+- **State file compatibility** — SHA256 hashes are uppercased to match PowerShell's `Get-FileHash` output, so users can switch runtimes without reprocessing.
+- **PowerShell preserved** — `Sync-CoworkSessions.ps1` is kept as an alternative for Windows users who prefer it.
+
+### Script Structure (`cowork_sync.py`)
+
+Single-file, ~450 lines, procedural style with a `main()` entry point.
+
+**CLI** (argparse):
+
+| Flag | Description |
+|------|-------------|
+| `-c` / `--config` | Config file path (default: `config.json` next to script) |
+| `--force` | Reprocess all sessions regardless of state |
+| `--dry-run` | Preview without writing |
+| `--check` | Validate config + format, exit |
+
+**Functions** (same pipeline as PowerShell):
+
+| Function | Purpose |
+|----------|---------|
+| `TermColor` class | Colored terminal output (`[+]` green, `[DRY]` yellow, etc.). Auto-detects TTY, enables VT100 on Windows 10+. |
+| `expand_path()` | Cross-platform: `~` via `os.path.expanduser`, `%VAR%` via `os.path.expandvars` (Windows only) |
+| `load_config()` | Parse JSON, expand paths, validate required fields, merge format defaults |
+| `validate_output_path()` | UNC path check on Windows (ping), parent directory existence check |
+| `validate_session_format()` | Recursive JSONL discovery, sample parsing, type validation, platform-specific alternative path hints |
+| `file_sha256()` | `hashlib.sha256` with `.upper()` for PowerShell state file compatibility |
+| `get_pending_sessions()` | Find new/changed sessions via SHA256 state comparison |
+| `distill_session()` | JSONL to Markdown: extract user/assistant text, drop thinking/tool_use, build metadata header |
+| `get_project_tags()` | Case-insensitive keyword substring matching against config dictionary |
+| `update_index()` | Rebuild `SESSION-INDEX.md` with existing + new entries, sorted newest first |
+| `load_state()` / `save_state()` | JSON read/write for the processing state file |
+| `main()` | Orchestration: load, validate, discover, process, index, save state |
+
+### Cross-Platform Path Expansion
+
+| Pattern | Windows | macOS/Linux |
+|---------|---------|-------------|
+| `~` | `os.path.expanduser` (`C:\Users\username`) | `os.path.expanduser` (`/Users/...` or `/home/...`) |
+| `%APPDATA%` | `os.path.expandvars` expands it | Left as-is (correct: produces "not found" error) |
+| `$HOME` | `os.path.expandvars` expands it | `os.path.expandvars` expands it |
+
+### JSONL Distillation Logic
+
+Each `audit.jsonl` file contains one JSON object per line. Entry types handled:
+
+| Entry type | Action |
+|------------|--------|
+| `system` (subtype `init`) | Extract model, start timestamp, session name from `cwd`, connected MCP servers |
+| `system` (other subtypes) | Dropped (permission requests, etc.) |
+| `user` | Text content extracted. Array content parsed for text parts + tool errors (truncated to 500 chars). Turn count incremented. |
+| `assistant` | Only `type: "text"` blocks kept. Thinking blocks, tool_use JSON, signatures dropped. |
+| `tool_use_summary` | Kept as blockquote: `> **Tool**: {summary}` |
+| `result` | Cost accumulated, end timestamp captured |
+| Unknown types | Counted, warned, skipped |
+
+### Behavioral Parity Details
+
+| Behavior | PowerShell | Python |
+|----------|-----------|--------|
+| Date prefix | `$f.LastWriteTime.ToString("yyyy-MM-dd")` | `datetime.fromtimestamp(st_mtime).strftime("%Y-%m-%d")` |
+| Cost rounding | `[Math]::Round($cost, 4)` | `round(cost, 4)` |
+| SHA256 case | `Get-FileHash` returns uppercase | `hexdigest().upper()` |
+| File copy | `Copy-Item -Force` | `shutil.copy2()` (preserves metadata) |
+| Encoding | `-Encoding UTF8` everywhere | `encoding="utf-8"` everywhere |
+| Exit codes | `exit 0` / `exit 1` | `sys.exit(0)` / `sys.exit(1)` |
+| Index sort | `Sort-Object -Property Date -Descending` | `sorted(..., key=lambda e: e["date"], reverse=True)` |
+| Session name regex | `-match '/sessions/(.+)'` | `re.search(r'/sessions/(.+)', cwd)` |
+
+### Files Created/Modified
+
+**New files:**
+- `cowork_sync.py` — Main Python script (primary runtime)
+- `config.example.linux.json` — Linux config template (`~/.config/Claude/local-agent-mode-sessions`)
+- `com.cowork-sync.python.plist` — macOS launchd agent using `/usr/bin/python3`
+
+**Modified files:**
+- `.gitignore` — Added `__pycache__/` and `*.pyc`
+- `CLAUDE.md` — Added Linux platform, Python setup instructions, updated repo structure
+- `README.md` — Restructured for Python-first, added Linux support
+
+**Untouched files:**
+- `Sync-CoworkSessions.ps1` — Kept for PowerShell users
+- `Register-CoworkSync.ps1` — Windows Scheduled Task registration (PowerShell only)
+- `com.cowork-sync.agent.plist` — macOS launchd agent (PowerShell alternative)
+- `config.example.json` — Windows config template
+- `config.example.macos.json` — macOS config template
+
+### Verification
+
+```bash
+# Validate config + format
+python3 cowork_sync.py --check
+
+# Preview without writing
+python3 cowork_sync.py --dry-run
+
+# Full run
+python3 cowork_sync.py
+
+# Cross-runtime state compatibility test:
+# 1. Run PowerShell version to populate state
+# 2. Run Python version — should detect no new sessions (state hashes match)
+```
 
 ## License
 
