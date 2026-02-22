@@ -22,6 +22,7 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -185,12 +186,23 @@ def validate_output_path(path: str) -> bool:
             tc.warn("  Expected format: \\\\server\\share\\path")
             return False
         server = parts[2]
-        # Attempt a lightweight connectivity check
-        ret = os.system(
-            f'ping -n 1 -w 3000 {server} >nul 2>&1'
-            if platform.system() == "Windows"
-            else f'ping -c 1 -W 3 {server} >/dev/null 2>&1'
-        )
+        # Validate server name: reject shell metacharacters and path traversal
+        if not re.match(r'^[a-zA-Z0-9._-]+$', server):
+            tc.error(f"Invalid characters in UNC server name: {server}")
+            return False
+        # Attempt a lightweight connectivity check (subprocess, not shell)
+        try:
+            ping_args = (
+                ["ping", "-n", "1", "-w", "3000", server]
+                if platform.system() == "Windows"
+                else ["ping", "-c", "1", "-W", "3", server]
+            )
+            ret = subprocess.run(
+                ping_args, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=10
+            ).returncode
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            ret = 1
         if ret != 0:
             tc.error(f"Cannot reach server: {server}")
             tc.warn(
@@ -380,6 +392,7 @@ def get_pending_sessions(
     sessions_dir: str, fmt_cfg: dict, state: dict, force: bool
 ) -> list[dict]:
     """Find new/changed sessions via SHA256 state comparison."""
+    global warning_count
     target_file = fmt_cfg["transcript_filename"]
     prefix = fmt_cfg["session_dir_prefix"]
     min_size = fmt_cfg["min_file_size_bytes"]
@@ -398,6 +411,18 @@ def get_pending_sessions(
         session_uuid = session_folder
         if session_folder.startswith(prefix):
             session_uuid = session_folder[len(prefix):]
+
+        # Sanitize UUID: reject path traversal, absolute paths, URL-encoded sequences
+        session_uuid = session_uuid.replace("%2F", "/").replace("%2f", "/")
+        session_uuid = session_uuid.replace("%5C", "\\").replace("%5c", "\\")
+        if (".." in session_uuid
+                or os.sep in session_uuid
+                or "/" in session_uuid
+                or session_uuid.startswith(os.sep)
+                or os.path.isabs(session_uuid)):
+            tc.warn(f"  Skipping session with suspicious UUID: {session_folder}")
+            warning_count += 1
+            continue
 
         key = session_uuid
         if force or key not in state or state[key] != file_hash:
@@ -431,6 +456,31 @@ def get_project_tags(text: str, tag_dictionary: dict) -> str:
         return "untagged"
     return ", ".join(sorted(matched))
 
+
+
+# ============================================================================
+# Markdown sanitization
+# ============================================================================
+def escape_md_table_cell(value: str) -> str:
+    """Escape pipe characters and collapse newlines for Markdown table cells."""
+    if not value:
+        return value
+    # Replace pipes with escaped version
+    value = value.replace("|", "\\|")
+    # Collapse newlines to spaces (newlines break table rows)
+    value = re.sub(r'[\r\n]+', ' ', value)
+    return value.strip()
+
+
+def sanitize_tool_summary(summary: str) -> str:
+    """Remove Markdown structural elements from tool summaries to prevent injection."""
+    if not summary:
+        return summary
+    # Collapse newlines — tool summaries should be single-line in blockquotes
+    summary = re.sub(r'[\r\n]+', ' ', summary)
+    # Strip leading # that would create headings
+    summary = re.sub(r'#+\s', '', summary)
+    return summary.strip()
 
 # ============================================================================
 # Distill audit.jsonl -> Markdown
@@ -497,7 +547,12 @@ def distill_session(
             cwd = entry.get("cwd", "")
             m = re.search(r"/sessions/(.+)", cwd)
             if m:
-                meta["session_name"] = m.group(1)
+                name = m.group(1)
+                # Sanitize: strip path traversal, NUL bytes, control chars
+                name = name.replace("\x00", "").replace("\0", "")
+                name = re.sub(r'[\x00-\x1f]', '', name)
+                if ".." not in name and not os.path.isabs(name):
+                    meta["session_name"] = name
             mcp = entry.get("mcp_servers", [])
             if isinstance(mcp, list):
                 meta["mcp_servers"] = [
@@ -512,7 +567,7 @@ def distill_session(
 
         # --- Tool summaries ---
         if entry_type == "tool_use_summary":
-            summary = entry.get("summary", "")
+            summary = sanitize_tool_summary(entry.get("summary", ""))
             if summary:
                 md_parts.append(f"> **Tool**: {summary}")
                 md_parts.append("")
@@ -650,15 +705,15 @@ def distill_session(
         "",
         "| Field | Value |",
         "|-------|-------|",
-        f"| Model | `{meta['model']}` |",
+        f"| Model | `{escape_md_table_cell(meta['model'])}` |",
         f"| Session ID | `{short_id}` |",
         f"| Started | {meta['start_time']} |",
         f"| Ended | {meta['end_time']} |",
         f"| User turns | {meta['turn_count']} |",
         f"| Cost (USD) | {cost_str} |",
-        f"| MCP servers | {mcp_str} |",
-        f"| Summary | {meta['first_message']} |",
-        f"| Projects | {meta['project_tags']} |",
+        f"| MCP servers | {escape_md_table_cell(mcp_str)} |",
+        f"| Summary | {escape_md_table_cell(meta['first_message'])} |",
+        f"| Projects | {escape_md_table_cell(meta['project_tags'])} |",
         f"| Format version | {FORMAT_VERSION} |",
         "",
     ]
@@ -695,10 +750,12 @@ def update_index(
         file_links = f"[distilled]({e['distilled_file']})"
         if e.get("raw_file"):
             file_links += f" / [raw]({e['raw_file']})"
+        # Escape pipe characters in user-sourced values
+        esc = escape_md_table_cell
         rows.append(
-            f"| {e['date']} | {e['session_name']} | {e.get('first_message', '')} "
-            f"| {e['project_tags']} "
-            f"| {e['model']} | {e['turns']} | ${e['cost']} | {file_links} |"
+            f"| {esc(e['date'])} | {esc(e['session_name'])} | {esc(e.get('first_message', ''))} "
+            f"| {esc(e['project_tags'])} "
+            f"| {esc(e['model'])} | {e['turns']} | ${e['cost']} | {file_links} |"
         )
 
     content = header + "\n".join(rows) + "\n"

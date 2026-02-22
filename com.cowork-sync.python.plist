@@ -27,7 +27,7 @@
         <!-- System Python 3 (bundled with macOS 12.3+) -->
         <string>/usr/bin/python3</string>
 
-        <string>/Users/airm2max/scripts/unified-cowork/cowork_sync.py</string>
+        <string>/PATH/TO/unified-cowork/cowork_sync.py</string>
     </array>
 
     <!-- Run every 300 seconds (5 minutes) -->
@@ -46,6 +46,6 @@
 
     <!-- Set a working directory (where config.json lives) -->
     <key>WorkingDirectory</key>
-    <string>/Users/airm2max/scripts/unified-cowork</string>
+    <string>/PATH/TO/unified-cowork</string>
 </dict>
 </plist>

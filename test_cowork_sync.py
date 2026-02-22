@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import tempfile
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +26,12 @@ def _suppress_output():
 def _make_jsonl(entries: list[dict]) -> str:
     """Serialize a list of dicts into JSONL text."""
     return "\n".join(json.dumps(e) for e in entries) + "\n"
+
+
+
+def _count_unescaped_pipes(line: str) -> int:
+    """Count pipe characters not preceded by a backslash."""
+    return len(re.findall(r'(?<!\\)[|]', line))
 
 
 # Default format config matching production defaults
@@ -706,12 +713,12 @@ class TestUpdateIndex(unittest.TestCase):
 # TestSecurity — documents known vulnerabilities (tests only, no fixes)
 # ============================================================================
 class TestSecurity(unittest.TestCase):
-    """Security tests documenting known vulnerabilities.
+    """Security regression tests.
 
-    Tests marked @unittest.expectedFailure document vulnerabilities where the
-    code is currently exploitable. They will "pass" (as xfail) until the
-    vulnerability is fixed, at which point they'll start truly passing and
-    the decorator should be removed.
+    These tests verify that previously identified vulnerabilities have been
+    fixed. Each test targets a specific attack vector (shell injection,
+    path traversal, Markdown injection). If any test fails, the
+    corresponding vulnerability has regressed.
     """
 
     def _write_jsonl(self, td, entries):
@@ -723,7 +730,6 @@ class TestSecurity(unittest.TestCase):
     # ------------------------------------------------------------------
     # 1. OS Command Injection via UNC server name (Critical)
     # ------------------------------------------------------------------
-    @unittest.expectedFailure
     def test_unc_path_shell_metacharacters_not_executed(self):
         """UNC server name with shell metacharacters must not be passed
         unquoted to os.system()."""
@@ -740,7 +746,6 @@ class TestSecurity(unittest.TestCase):
                     f"Shell metacharacter {meta!r} passed unquoted to os.system: {cmd}"
                 )
 
-    @unittest.expectedFailure
     def test_unc_path_with_spaces_handled_safely(self):
         """UNC server name with spaces must be properly quoted in the
         shell command."""
@@ -761,7 +766,6 @@ class TestSecurity(unittest.TestCase):
     # ------------------------------------------------------------------
     # 2. Path Traversal via session UUID / cwd (High)
     # ------------------------------------------------------------------
-    @unittest.expectedFailure
     def test_session_uuid_path_traversal(self):
         """Session dir named local_../../escape must not produce a UUID
         containing '..'."""
@@ -787,7 +791,6 @@ class TestSecurity(unittest.TestCase):
             self.assertNotIn("..", item["session_uuid"],
                              f"Path traversal in session_uuid: {item['session_uuid']}")
 
-    @unittest.expectedFailure
     def test_cwd_path_traversal_in_session_name(self):
         """A cwd containing '../' must not leak traversal into session_name."""
         entries = [
@@ -843,7 +846,6 @@ class TestSecurity(unittest.TestCase):
     # ------------------------------------------------------------------
     # 3. JSONL Content Injection into Markdown (Medium)
     # ------------------------------------------------------------------
-    @unittest.expectedFailure
     def test_pipe_in_model_does_not_break_table(self):
         """A model name containing '|' must not add extra columns to
         the Markdown header table."""
@@ -878,15 +880,14 @@ class TestSecurity(unittest.TestCase):
             if in_table and line.startswith("|---"):
                 continue
             if in_table and line.startswith("|"):
-                pipe_count = line.count("|")
+                pipe_count = _count_unescaped_pipes(line)
                 self.assertEqual(
                     pipe_count, 3,
-                    f"Table row has {pipe_count} pipes (expected 3): {line}"
+                    f"Table row has {pipe_count} unescaped pipes (expected 3): {line}"
                 )
             elif in_table:
                 break  # end of table
 
-    @unittest.expectedFailure
     def test_pipe_in_first_message_does_not_break_table(self):
         """A first user message containing '|' must not break the
         Markdown header table."""
@@ -908,14 +909,13 @@ class TestSecurity(unittest.TestCase):
         # Find the Summary row specifically
         for line in md.split("\n"):
             if "| Summary |" in line:
-                pipe_count = line.count("|")
+                pipe_count = _count_unescaped_pipes(line)
                 self.assertEqual(
                     pipe_count, 3,
-                    f"Summary row has {pipe_count} pipes (expected 3): {line}"
+                    f"Summary row has {pipe_count} unescaped pipes (expected 3): {line}"
                 )
                 break
 
-    @unittest.expectedFailure
     def test_pipe_in_summary_does_not_break_index(self):
         """An index entry with '|' in first_message must not add extra
         columns to the SESSION-INDEX.md table."""
@@ -945,18 +945,17 @@ class TestSecurity(unittest.TestCase):
         header_pipe_count = None
         for line in content.split("\n"):
             if line.startswith("| Date |"):
-                header_pipe_count = line.count("|")
+                header_pipe_count = _count_unescaped_pipes(line)
                 continue
             if line.startswith("|---"):
                 continue
             if line.startswith("|") and header_pipe_count is not None:
-                data_pipe_count = line.count("|")
+                data_pipe_count = _count_unescaped_pipes(line)
                 self.assertEqual(
                     data_pipe_count, header_pipe_count,
-                    f"Data row pipe count ({data_pipe_count}) != header ({header_pipe_count}): {line}"
+                    f"Data row unescaped pipe count ({data_pipe_count}) != header ({header_pipe_count}): {line}"
                 )
 
-    @unittest.expectedFailure
     def test_newline_in_tool_summary_contained(self):
         """A tool summary with embedded newlines and Markdown headings
         must not inject top-level headings into the output."""
@@ -990,21 +989,28 @@ class TestSecurity(unittest.TestCase):
     # ------------------------------------------------------------------
     # 4. Absolute Path in session_uuid overwrites arbitrary file (Medium)
     # ------------------------------------------------------------------
-    @unittest.expectedFailure
-    def test_absolute_path_session_uuid_contained(self):
-        """os.path.join() with an absolute second argument returns just
-        the absolute path — this must be guarded against."""
-        # This documents the os.path.join hazard:
-        # os.path.join("/output/archive", "/etc/passwd.jsonl")
-        # returns "/etc/passwd.jsonl", not "/output/archive/etc/passwd.jsonl"
-        result = os.path.join("/output/archive", "/etc/passwd.jsonl")
+    def test_absolute_path_session_uuid_rejected(self):
+        """A session folder whose UUID resolves to an absolute path
+        must be rejected by get_pending_sessions (not passed to os.path.join)."""
+        content = b'{"type":"user","message":"hello"}\n' * 5
 
-        # The vulnerable behavior is that result == "/etc/passwd.jsonl"
-        # A secure implementation would keep the path under /output/archive
-        self.assertTrue(
-            result.startswith("/output/archive/"),
-            f"os.path.join with absolute path escapes base: {result}"
-        )
+        with tempfile.TemporaryDirectory() as td:
+            sessions_dir = os.path.join(td, "sessions")
+            # Create a folder with an absolute-path-like UUID
+            evil_dir = os.path.join(sessions_dir, "local_/etc/passwd")
+            os.makedirs(evil_dir, exist_ok=True)
+            with open(os.path.join(evil_dir, "audit.jsonl"), "wb") as f:
+                f.write(content)
+
+            with _suppress_output():
+                pending = cs.get_pending_sessions(sessions_dir, DEFAULT_FMT, {}, False)
+
+        # The absolute-path UUID must be filtered out
+        for item in pending:
+            self.assertFalse(
+                os.path.isabs(item["session_uuid"]),
+                f"Absolute path UUID not rejected: {item['session_uuid']}",
+            )
 
     # ------------------------------------------------------------------
     # 5. NUL byte in session name (Medium)
