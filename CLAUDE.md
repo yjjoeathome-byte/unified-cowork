@@ -24,7 +24,11 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 
 **For Cowork/Claude sessions:** Use ssh-relay to any Proxmox host (node00–node06) for git operations. All hosts have equivalent access. No PAT required for read operations or local branch work — only `git push` needs GitHub credentials (configured on the Windows side).
 
+**Git push host:** node03 is the canonical push host. It has an ed25519 deploy key (`/root/.ssh/github_deploy_unified_cowork`) registered as a repo-scoped deploy key on GitHub with write access. The remote URL is SSH: `git@github.com-unified-cowork:yjjoeathome-byte/unified-cowork.git` (routed via `/root/.ssh/config` Host alias). If node03 is down, any other Proxmox host can push — but a new deploy key must be generated on that host and added to the repo on GitHub first.
+
 **NFS ownership note:** First git operation on a new host requires `git config --global --add safe.directory /mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/unified-cowork-repo` due to NFS UID mapping.
+
+**Windows access is read-only.** The SMB-mapped `Z:\` view of the repo shows the SSH remote URL but cannot push (no deploy key, NFS permission denied on `.git/config`). This is by design — node03 pushes, Windows reads.
 
 **Working directory hygiene:** Windows Explorer creates `Thumbs.db`, `Zone.Identifier`, and CRLF artifacts on the NFS share. These are not tracked — ignore them in `git status`. If CRLF diffs appear on all files, run `git checkout -- .` to reset.
 
