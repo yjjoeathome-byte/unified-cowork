@@ -481,6 +481,21 @@ Non-fatal. Cowork added new entry types the script doesn't handle yet. The entri
 
 The Python script (`cowork_sync.py`) and the PowerShell script (`Sync-CoworkSessions.ps1`) share the same state file format. SHA256 hashes are uppercased in both implementations, so you can switch between runtimes without reprocessing all sessions.
 
+## Testing
+
+```bash
+# Run all tests
+python3 -m unittest test_cowork_sync -v
+
+# Run a specific test class
+python3 -m unittest test_cowork_sync.TestDistillSession -v
+
+# Run a single test
+python3 -m unittest test_cowork_sync.TestSecurity.test_pipe_in_model_does_not_break_table -v
+```
+
+The test suite uses only stdlib (`unittest` + `tempfile`) — no pytest or other dependencies. Tests marked `@unittest.expectedFailure` document known security vulnerabilities; they will show as `expected failure` until the underlying code is fixed.
+
 ## How It Works (Technical)
 
 The script recurses `sessions_dir` looking for files matching `format.transcript_filename` inside directories prefixed with `format.session_dir_prefix`. Each match is an `audit.jsonl` file — one JSON object per line.
