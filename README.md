@@ -4,6 +4,22 @@ Automated backup, distillation, and **cross-session context restoration** for [C
 
 Every Cowork session starts from scratch. This tool fixes that. It watches your local sessions, archives the raw transcripts, distills each into clean Markdown, and generates a **catch-up index** that lets new Cowork chats pick up exactly where you left off — automatically, at near-zero token cost.
 
+## Try it in 10 seconds
+
+Once the pipeline is running, open a **brand-new** Cowork chat and type:
+
+```
+catchup-bunny
+```
+
+That's it. Claude reads your session index, shows a numbered menu of your past work grouped by project, and asks which one to resume. Pick a number and you're back in context — no copy-paste, no file hunting, no re-explaining.
+
+> **One phrase. Full session continuity across chats.**
+
+See [Session Catch-Up](#session-catch-up-new-chat-bootstrap) for how it works under the hood, or keep reading for setup.
+
+---
+
 ## Quick Start: New Chat Catch-Up
 
 **The problem:** you open a new Cowork session and have to manually explain what you were working on yesterday.
