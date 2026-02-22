@@ -94,6 +94,12 @@ Things that **will** change without notice: the storage directory path, the fold
 
 The `format` section in `config.json` exposes every assumption the script makes about the storage layout. When Anthropic changes something, you adjust the config rather than editing the script.
 
+### Format Reference
+
+For a complete reverse-engineered specification of the `audit.jsonl` format — all entry types, field inventories, annotated examples from real sessions, compression rationale, and common pitfalls — see:
+
+**[Cowork `audit.jsonl` — Reverse-Engineered Session Format Reference](cowork-audit-jsonl-format-reference.md)**
+
 ## Requirements
 
 - **Windows 10/11** or **macOS** (Apple Silicon or Intel)
