@@ -1,9 +1,9 @@
 {
-    "_comment": "macOS example — copy to config.json. Tilde (~) expands to your home directory. Avoid ~/Documents/ — macOS sandboxing may block launchd writes.",
+    "_comment": "Linux example — copy to config.json. Tilde (~) expands to your home directory.",
 
-    "sessions_dir": "~/Library/Application Support/Claude/local-agent-mode-sessions",
+    "sessions_dir": "~/.config/Claude/local-agent-mode-sessions",
 
-    "output_dir": "~/cowork-sessions",
+    "output_dir": "~/Documents/cowork-sessions",
 
     "state_file": "~/.local/share/cowork-sync-state.json",
 
