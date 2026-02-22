@@ -286,10 +286,14 @@ class TestDistillSession(unittest.TestCase):
         self.assertIn("Hi there!", md)
         self.assertIn("> **Tool**: Read file: main.py", md)
 
+        # Summary row in header
+        self.assertIn("| Summary | Hello Claude |", md)
+
         # Meta
         self.assertEqual(meta["model"], "claude-opus-4-20250514")
         self.assertEqual(meta["turn_count"], 1)
         self.assertAlmostEqual(meta["total_cost"], 0.05)
+        self.assertEqual(meta["first_message"], "Hello Claude")
 
     def test_empty_file_returns_none(self):
         with tempfile.TemporaryDirectory() as td:
@@ -371,6 +375,51 @@ class TestDistillSession(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertIn("plain string message", result["markdown"])
+
+    def test_first_message_captured(self):
+        """first_message is set from the first user turn only."""
+        entries = [
+            {"type": "user", "message": {"content": "First question"}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "a1"}]}},
+            {"type": "user", "message": {"content": "Second question"}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "a2"}]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid_fm", {}, DEFAULT_FMT)
+
+        self.assertEqual(result["meta"]["first_message"], "First question")
+
+    def test_first_message_truncated_at_80_chars(self):
+        long_msg = "A" * 120
+        entries = [
+            {"type": "user", "message": {"content": long_msg}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid_trunc", {}, DEFAULT_FMT)
+
+        fm = result["meta"]["first_message"]
+        self.assertEqual(len(fm), 83)  # 80 + "..."
+        self.assertTrue(fm.endswith("..."))
+
+    def test_first_message_newlines_collapsed(self):
+        entries = [
+            {"type": "user", "message": {"content": "line one\nline two\nline three"}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid_nl", {}, DEFAULT_FMT)
+
+        self.assertEqual(result["meta"]["first_message"], "line one line two line three")
 
     def test_multiple_costs_summed(self):
         entries = [
@@ -585,6 +634,7 @@ class TestUpdateIndex(unittest.TestCase):
                 "turns": 5,
                 "cost": 0.12,
                 "project_tags": "backend",
+                "first_message": "Fix the login bug",
                 "distilled_file": "distilled/2026-02-20_my-session.md",
                 "raw_file": "raw/2026-02-20_my-session.jsonl",
             },
@@ -600,8 +650,10 @@ class TestUpdateIndex(unittest.TestCase):
 
         self.assertIn("# Session Index", content)
         self.assertIn("| Date |", content)
+        self.assertIn("| Summary |", content)
         self.assertIn("2026-02-20", content)
         self.assertIn("my-session", content)
+        self.assertIn("Fix the login bug", content)
         self.assertIn("opus", content)
         self.assertIn("[distilled]", content)
         self.assertIn("[raw]", content)
@@ -611,12 +663,12 @@ class TestUpdateIndex(unittest.TestCase):
             {
                 "date": "2026-01-01", "session_name": "old",
                 "model": "m", "turns": 1, "cost": 0,
-                "project_tags": "", "distilled_file": "d/old.md", "raw_file": "",
+                "project_tags": "", "first_message": "", "distilled_file": "d/old.md", "raw_file": "",
             },
             {
                 "date": "2026-02-15", "session_name": "new",
                 "model": "m", "turns": 1, "cost": 0,
-                "project_tags": "", "distilled_file": "d/new.md", "raw_file": "",
+                "project_tags": "", "first_message": "", "distilled_file": "d/new.md", "raw_file": "",
             },
         ]
 
@@ -638,7 +690,7 @@ class TestUpdateIndex(unittest.TestCase):
             {
                 "date": "2026-02-20", "session_name": "s",
                 "model": "m", "turns": 1, "cost": 0,
-                "project_tags": "", "distilled_file": "d/s.md", "raw_file": "",
+                "project_tags": "", "first_message": "", "distilled_file": "d/s.md", "raw_file": "",
             },
         ]
 
