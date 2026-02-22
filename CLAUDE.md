@@ -6,6 +6,28 @@ This repo is `cowork-session-sync`: an automated backup and distillation pipelin
 
 It watches the local Cowork session storage directory, copies raw `audit.jsonl` files to an output directory (local or SMB/NAS), and distills each into a clean Markdown transcript. It also tags sessions with project keywords and maintains a session index.
 
+## Development Infrastructure — NAS Access
+
+The canonical repo clone lives on the NAS, accessible from multiple paths depending on context:
+
+| Context | Path |
+|---------|------|
+| Proxmox hosts (node00–node06) | `/mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/unified-cowork-repo` |
+| Windows (SMB mapped drive) | `Z:\yjjoe-workspace\Anthropic\root\unified-cowork-repo` |
+| Cowork sessions (ssh-relay) | Use any `node0X` host alias via ssh-relay MCP tool |
+
+**NAS details:**
+- NFS server: `10.255.10.193`, export: `/mnt/home-storage/gitsilence-nas`, NFSv4.2
+- Mounted on all 7 Proxmox hosts at `/mnt/pve/gs-nas` (defined in `/etc/pve/storage.cfg`)
+- Git is installed on all Proxmox hosts (git 2.47.3)
+- Git remote: `https://github.com/yjjoeathome-byte/unified-cowork.git` (HTTPS, push requires GitHub auth)
+
+**For Cowork/Claude sessions:** Use ssh-relay to any Proxmox host (node00–node06) for git operations. All hosts have equivalent access. No PAT required for read operations or local branch work — only `git push` needs GitHub credentials (configured on the Windows side).
+
+**NFS ownership note:** First git operation on a new host requires `git config --global --add safe.directory /mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/unified-cowork-repo` due to NFS UID mapping.
+
+**Working directory hygiene:** Windows Explorer creates `Thumbs.db`, `Zone.Identifier`, and CRLF artifacts on the NFS share. These are not tracked — ignore them in `git status`. If CRLF diffs appear on all files, run `git checkout -- .` to reset.
+
 ## Platform Support
 
 | | Windows | macOS |
