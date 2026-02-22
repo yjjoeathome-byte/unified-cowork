@@ -702,5 +702,343 @@ class TestUpdateIndex(unittest.TestCase):
             self.assertFalse(os.path.exists(index_file))
 
 
+# ============================================================================
+# TestSecurity — documents known vulnerabilities (tests only, no fixes)
+# ============================================================================
+class TestSecurity(unittest.TestCase):
+    """Security tests documenting known vulnerabilities.
+
+    Tests marked @unittest.expectedFailure document vulnerabilities where the
+    code is currently exploitable. They will "pass" (as xfail) until the
+    vulnerability is fixed, at which point they'll start truly passing and
+    the decorator should be removed.
+    """
+
+    def _write_jsonl(self, td, entries):
+        fp = os.path.join(td, "audit.jsonl")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(_make_jsonl(entries))
+        return Path(fp)
+
+    # ------------------------------------------------------------------
+    # 1. OS Command Injection via UNC server name (Critical)
+    # ------------------------------------------------------------------
+    @unittest.expectedFailure
+    def test_unc_path_shell_metacharacters_not_executed(self):
+        """UNC server name with shell metacharacters must not be passed
+        unquoted to os.system()."""
+        with _suppress_output(), \
+             patch("os.system", return_value=0) as mock_system:
+            cs.validate_output_path("\\\\evil;rm -rf ~\\share\\path")
+
+        if mock_system.called:
+            cmd = mock_system.call_args[0][0]
+            # The command must not contain unquoted shell metacharacters
+            for meta in [";", "&", "|", "`", "$("]:
+                self.assertNotIn(
+                    meta, cmd,
+                    f"Shell metacharacter {meta!r} passed unquoted to os.system: {cmd}"
+                )
+
+    @unittest.expectedFailure
+    def test_unc_path_with_spaces_handled_safely(self):
+        """UNC server name with spaces must be properly quoted in the
+        shell command."""
+        with _suppress_output(), \
+             patch("os.system", return_value=0) as mock_system:
+            cs.validate_output_path("\\\\my server\\share\\path")
+
+        if mock_system.called:
+            cmd = mock_system.call_args[0][0]
+            # "my server" should appear quoted (single or double quotes,
+            # or shlex-escaped) — not bare
+            self.assertFalse(
+                "ping" in cmd and "my server" in cmd
+                and "'" not in cmd and '"' not in cmd,
+                f"Unquoted space in os.system argument: {cmd}"
+            )
+
+    # ------------------------------------------------------------------
+    # 2. Path Traversal via session UUID / cwd (High)
+    # ------------------------------------------------------------------
+    @unittest.expectedFailure
+    def test_session_uuid_path_traversal(self):
+        """Session dir named local_../../escape must not produce a UUID
+        containing '..'."""
+        content = b'{"type":"user","message":"hello"}\n' * 5
+
+        with tempfile.TemporaryDirectory() as td:
+            # Create a directory that simulates path traversal
+            sessions_dir = os.path.join(td, "sessions")
+            evil_dir = os.path.join(sessions_dir, "local_..%2F..%2Fescape")
+            os.makedirs(evil_dir)
+            with open(os.path.join(evil_dir, "audit.jsonl"), "wb") as f:
+                f.write(content)
+
+            # Also test literal ".." (create with os.makedirs won't traverse)
+            evil_dir2 = os.path.join(sessions_dir, "local_....escape")
+            os.makedirs(evil_dir2, exist_ok=True)
+            with open(os.path.join(evil_dir2, "audit.jsonl"), "wb") as f:
+                f.write(content)
+
+            pending = cs.get_pending_sessions(sessions_dir, DEFAULT_FMT, {}, False)
+
+        for item in pending:
+            self.assertNotIn("..", item["session_uuid"],
+                             f"Path traversal in session_uuid: {item['session_uuid']}")
+
+    @unittest.expectedFailure
+    def test_cwd_path_traversal_in_session_name(self):
+        """A cwd containing '../' must not leak traversal into session_name."""
+        entries = [
+            {
+                "type": "system", "subtype": "init",
+                "model": "test-model", "session_id": "s1",
+                "cwd": "/sessions/../../etc/passwd",
+                "mcp_servers": [],
+            },
+            {"type": "user", "message": {"content": "hi"}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "hello"}
+            ]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "safe-uuid", {}, DEFAULT_FMT)
+
+        self.assertIsNotNone(result)
+        self.assertNotIn("..", result["session_name"],
+                         f"Path traversal in session_name: {result['session_name']}")
+
+    def test_output_filename_stays_within_output_dir(self):
+        """Filename constructed from a traversal UUID must resolve inside
+        the output directory, not escape it."""
+        output_dir = "/output/archive"
+        traversal_uuid = "../../etc/passwd"
+
+        # Simulate the main loop's filename construction
+        raw_name = f"2026-02-20_{traversal_uuid}.jsonl"
+        raw_dest = os.path.join(output_dir, "raw", raw_name)
+        distilled_name = f"2026-02-20_{traversal_uuid}.md"
+        distilled_dest = os.path.join(output_dir, "distilled", distilled_name)
+
+        # Resolve to absolute paths and check containment
+        raw_resolved = os.path.realpath(raw_dest)
+        distilled_resolved = os.path.realpath(distilled_dest)
+        raw_parent = os.path.realpath(os.path.join(output_dir, "raw"))
+        distilled_parent = os.path.realpath(os.path.join(output_dir, "distilled"))
+
+        self.assertTrue(
+            raw_resolved.startswith(raw_parent + os.sep) or raw_resolved == raw_parent,
+            f"Raw path escapes output dir: {raw_resolved}"
+        )
+        self.assertTrue(
+            distilled_resolved.startswith(distilled_parent + os.sep)
+            or distilled_resolved == distilled_parent,
+            f"Distilled path escapes output dir: {distilled_resolved}"
+        )
+
+    # ------------------------------------------------------------------
+    # 3. JSONL Content Injection into Markdown (Medium)
+    # ------------------------------------------------------------------
+    @unittest.expectedFailure
+    def test_pipe_in_model_does_not_break_table(self):
+        """A model name containing '|' must not add extra columns to
+        the Markdown header table."""
+        entries = [
+            {
+                "type": "system", "subtype": "init",
+                "model": "evil|model",
+                "session_id": "s1", "cwd": "/tmp",
+                "mcp_servers": [],
+            },
+            {"type": "user", "message": {"content": "hi"}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "hello"}
+            ]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid-pipe", {}, DEFAULT_FMT)
+
+        self.assertIsNotNone(result)
+        md = result["markdown"]
+
+        # Every data row in the header table should have exactly 3 pipe chars
+        # (| Field | Value |) — start pipe, separator pipe, end pipe
+        in_table = False
+        for line in md.split("\n"):
+            if line.startswith("| Field"):
+                in_table = True
+                continue
+            if in_table and line.startswith("|---"):
+                continue
+            if in_table and line.startswith("|"):
+                pipe_count = line.count("|")
+                self.assertEqual(
+                    pipe_count, 3,
+                    f"Table row has {pipe_count} pipes (expected 3): {line}"
+                )
+            elif in_table:
+                break  # end of table
+
+    @unittest.expectedFailure
+    def test_pipe_in_first_message_does_not_break_table(self):
+        """A first user message containing '|' must not break the
+        Markdown header table."""
+        entries = [
+            {"type": "user", "message": {"content": "choose A | B | C"}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "ok"}
+            ]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid-pipe2", {}, DEFAULT_FMT)
+
+        self.assertIsNotNone(result)
+        md = result["markdown"]
+
+        # Find the Summary row specifically
+        for line in md.split("\n"):
+            if "| Summary |" in line:
+                pipe_count = line.count("|")
+                self.assertEqual(
+                    pipe_count, 3,
+                    f"Summary row has {pipe_count} pipes (expected 3): {line}"
+                )
+                break
+
+    @unittest.expectedFailure
+    def test_pipe_in_summary_does_not_break_index(self):
+        """An index entry with '|' in first_message must not add extra
+        columns to the SESSION-INDEX.md table."""
+        entries = [
+            {
+                "date": "2026-02-20",
+                "session_name": "test-session",
+                "model": "opus",
+                "turns": 1,
+                "cost": 0.01,
+                "project_tags": "test",
+                "first_message": "pick A | B | C",
+                "distilled_file": "distilled/test.md",
+                "raw_file": "raw/test.jsonl",
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            index_file = os.path.join(td, "SESSION-INDEX.md")
+            with _suppress_output():
+                cs.update_index(entries, index_file, dry_run=False)
+
+            with open(index_file, "r") as f:
+                content = f.read()
+
+        # The header row has 9 pipes: | Date | Session | Summary | Project(s) | Model | Turns | Cost | Files |
+        header_pipe_count = None
+        for line in content.split("\n"):
+            if line.startswith("| Date |"):
+                header_pipe_count = line.count("|")
+                continue
+            if line.startswith("|---"):
+                continue
+            if line.startswith("|") and header_pipe_count is not None:
+                data_pipe_count = line.count("|")
+                self.assertEqual(
+                    data_pipe_count, header_pipe_count,
+                    f"Data row pipe count ({data_pipe_count}) != header ({header_pipe_count}): {line}"
+                )
+
+    @unittest.expectedFailure
+    def test_newline_in_tool_summary_contained(self):
+        """A tool summary with embedded newlines and Markdown headings
+        must not inject top-level headings into the output."""
+        entries = [
+            {"type": "user", "message": {"content": "do something"}},
+            {
+                "type": "tool_use_summary",
+                "summary": "x\n\n### Injected\n\nevil",
+            },
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "done"}
+            ]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid-inject", {}, DEFAULT_FMT)
+
+        self.assertIsNotNone(result)
+        md = result["markdown"]
+
+        # "### Injected" must not appear as a standalone heading line.
+        # It should either be escaped or remain inside a blockquote.
+        for line in md.split("\n"):
+            if line.strip() == "### Injected":
+                self.fail(
+                    "Injected heading appeared as a top-level line in output"
+                )
+
+    # ------------------------------------------------------------------
+    # 4. Absolute Path in session_uuid overwrites arbitrary file (Medium)
+    # ------------------------------------------------------------------
+    @unittest.expectedFailure
+    def test_absolute_path_session_uuid_contained(self):
+        """os.path.join() with an absolute second argument returns just
+        the absolute path — this must be guarded against."""
+        # This documents the os.path.join hazard:
+        # os.path.join("/output/archive", "/etc/passwd.jsonl")
+        # returns "/etc/passwd.jsonl", not "/output/archive/etc/passwd.jsonl"
+        result = os.path.join("/output/archive", "/etc/passwd.jsonl")
+
+        # The vulnerable behavior is that result == "/etc/passwd.jsonl"
+        # A secure implementation would keep the path under /output/archive
+        self.assertTrue(
+            result.startswith("/output/archive/"),
+            f"os.path.join with absolute path escapes base: {result}"
+        )
+
+    # ------------------------------------------------------------------
+    # 5. NUL byte in session name (Medium)
+    # ------------------------------------------------------------------
+    def test_null_byte_in_session_name(self):
+        """A cwd containing a NUL byte must not silently truncate the
+        session name."""
+        entries = [
+            {
+                "type": "system", "subtype": "init",
+                "model": "test-model", "session_id": "s1",
+                "cwd": "/sessions/safe\x00evil",
+                "mcp_servers": [],
+            },
+            {"type": "user", "message": {"content": "hi"}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "hello"}
+            ]}},
+        ]
+
+        with tempfile.TemporaryDirectory() as td:
+            fp = self._write_jsonl(td, entries)
+            with _suppress_output():
+                result = cs.distill_session(fp, "uuid-nul", {}, DEFAULT_FMT)
+
+        self.assertIsNotNone(result)
+        name = result["session_name"]
+        # The name should either reject the input, contain a sanitized
+        # full version, or raise — but NOT silently truncate to just "safe"
+        self.assertNotEqual(
+            name, "safe",
+            "Session name silently truncated at NUL byte"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
