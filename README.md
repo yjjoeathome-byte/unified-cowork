@@ -100,6 +100,14 @@ For a complete reverse-engineered specification of the `audit.jsonl` format — 
 
 **[Cowork `audit.jsonl` — Reverse-Engineered Session Format Reference](cowork-audit-jsonl-format-reference.md)**
 
+## Format Documentation Gap
+
+Anthropic ships Cowork with no public documentation of the `audit.jsonl` session format written to `local-agent-mode-sessions/`. This format reference was reverse-engineered from analysis of 744 sessions across 10 days of Opus 4.6 usage.
+
+If official documentation exists, please [open an issue](https://github.com/yjjoeathome-byte/unified-cowork/issues) — otherwise, [`cowork-audit-jsonl-format-reference.md`](./cowork-audit-jsonl-format-reference.md) is the most complete public specification available.
+
+See also: [anthropics/claude-code#27724](https://github.com/anthropics/claude-code/issues/27724) — documentation request filed upstream.
+
 ## Requirements
 
 - **Windows 10/11** or **macOS** (Apple Silicon or Intel)
