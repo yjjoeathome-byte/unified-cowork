@@ -25,3 +25,17 @@ __pycache__/
 # Environment
 .env
 *.log
+
+# Windows Explorer artifacts (NFS/SMB)
+Thumbs.db
+*:Zone.Identifier
+*:encryptable
+
+# Images / screenshots (marketing, not source)
+*.png
+*.jpg
+*.gif
+*.html
+
+# Misc
+Originals/

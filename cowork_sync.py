@@ -975,19 +975,19 @@ def main() -> None:
                 for i, line in enumerate(f):
                     if i >= 20:
                         break
-                    m_model = re.match(r"^\| Model \| `(.+)` \|", line)
+                    m_model = re.match(r"^\| Model \| `(.+?)` \|", line)
                     if m_model:
                         model = m_model.group(1)
                     m_turns = re.match(r"^\| User turns \| (\d+) \|", line)
                     if m_turns:
                         turns = m_turns.group(1)
-                    m_cost = re.match(r"^\| Cost .+ \| \$(.+) \|", line)
+                    m_cost = re.match(r"^\| Cost .+? \| \$(.+?) \|", line)
                     if m_cost:
                         cost = m_cost.group(1)
-                    m_summary = re.match(r"^\| Summary \| (.+) \|", line)
+                    m_summary = re.match(r"^\| Summary \| (.+?) \|", line)
                     if m_summary:
                         summary = m_summary.group(1).strip()
-                    m_tags = re.match(r"^\| Projects \| (.+) \|", line)
+                    m_tags = re.match(r"^\| Projects \| (.+?) \|", line)
                     if m_tags:
                         tags = m_tags.group(1).strip()
 

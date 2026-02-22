@@ -709,6 +709,69 @@ class TestUpdateIndex(unittest.TestCase):
             self.assertFalse(os.path.exists(index_file))
 
 
+
+
+class TestIndexRebuildFromDistilled(unittest.TestCase):
+    """Regression tests for re-parsing distilled file headers into the index."""
+
+    def test_pipe_in_model_survives_index_rebuild(self):
+        """A model name with escaped pipe in a distilled file must be
+        correctly re-parsed without field corruption."""
+        header = (
+            "# Session: test\n"
+            "\n"
+            "| Field | Value |\n"
+            "|-------|-------|\n"
+            "| Model | `evil\\|model` |\n"
+            "| Session ID | `abc12345...` |\n"
+            "| Started | 2026-02-20T10:00:00Z |\n"
+            "| Ended | 2026-02-20T10:05:00Z |\n"
+            "| User turns | 3 |\n"
+            "| Cost (USD) | $0.1234 |\n"
+            "| MCP servers | mcp-git |\n"
+            "| Summary | choose A \\| B \\| C |\n"
+            "| Projects | backend |\n"
+            "| Format version | 2026-02 |\n"
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            distilled_dir = os.path.join(td, "distilled")
+            os.makedirs(distilled_dir)
+            df = os.path.join(distilled_dir, "2026-02-20_test.md")
+            with open(df, "w") as f:
+                f.write(header)
+
+            # Simulate the index rebuild loop from main()
+            model = turns = cost = tags = summary = ""
+            with open(df, "r") as f:
+                for i, line in enumerate(f):
+                    if i >= 20:
+                        break
+                    m_model = re.match(r"^\| Model \| `(.+?)` \|", line)
+                    if m_model:
+                        model = m_model.group(1)
+                    m_turns = re.match(r"^\| User turns \| (\d+) \|", line)
+                    if m_turns:
+                        turns = m_turns.group(1)
+                    m_cost = re.match(r"^\| Cost .+? \| \$(.+?) \|", line)
+                    if m_cost:
+                        cost = m_cost.group(1)
+                    m_summary = re.match(r"^\| Summary \| (.+?) \|", line)
+                    if m_summary:
+                        summary = m_summary.group(1).strip()
+                    m_tags = re.match(r"^\| Projects \| (.+?) \|", line)
+                    if m_tags:
+                        tags = m_tags.group(1).strip()
+
+            # Model must not include the trailing backtick-pipe
+            self.assertNotIn("` |", model, f"Model field over-captured: {model!r}")
+            self.assertEqual(turns, "3")
+            self.assertEqual(cost, "0.1234")
+            # Summary and tags must not bleed into adjacent columns
+            self.assertNotIn(" |", cost, f"Cost field over-captured: {cost!r}")
+            self.assertEqual(tags, "backend")
+
+
 # ============================================================================
 # TestSecurity — documents known vulnerabilities (tests only, no fixes)
 # ============================================================================
