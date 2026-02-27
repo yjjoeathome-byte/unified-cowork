@@ -51,6 +51,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Script:WarningCount = 0
 $Script:FormatVersion = "2026-02"  # Expected Cowork format era
+$Script:ScriptVersion = "2026-02-27.1"  # Bump on every functional change
 
 # ============================================================================
 # Config loading
@@ -732,6 +733,26 @@ $catchUpFile  = Join-Path $outputDir "CATCH-UP.md"
 Write-Host "Source:    $sessionsDir"
 Write-Host "Output:    $outputDir"
 Write-Host ""
+
+# --- Deployment drift check ---
+# If this script is running from the output dir (deployed copy), compare against
+# the repo copy to detect version skew. Warns loudly but does not abort.
+$repoScriptPath = Join-Path $PSScriptRoot "..\unified-cowork-repo\Sync-CoworkSessions.ps1"
+if (($PSScriptRoot -ne (Split-Path $repoScriptPath -Parent)) -and (Test-Path $repoScriptPath)) {
+    $repoContent = Get-Content $repoScriptPath -Raw -ErrorAction SilentlyContinue
+    if ($repoContent -and $repoContent -match '\$Script:ScriptVersion\s*=\s*"([^"]+)"') {
+        $repoVersion = $Matches[1]
+        if ($repoVersion -ne $Script:ScriptVersion) {
+            Write-Host ""
+            Write-Host "[!] DEPLOYMENT DRIFT DETECTED" -ForegroundColor Red
+            Write-Host "    Running version:  $Script:ScriptVersion" -ForegroundColor Red
+            Write-Host "    Repo version:     $repoVersion" -ForegroundColor Red
+            Write-Host "    This script is a stale copy. Copy the repo version to: $PSCommandPath" -ForegroundColor Yellow
+            Write-Host ""
+            $Script:WarningCount++
+        }
+    }
+}
 
 # --- Validate output path ---
 if (-not (Test-OutputPath -Path $outputDir)) {
