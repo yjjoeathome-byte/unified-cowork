@@ -34,14 +34,23 @@ The catch-up mechanism has three parts:
 User says "catchup-bunny"
   → CLAUDE.md fast-path: skip project bootstrap
   → Read shortcut definition
-  → Read SESSION-INDEX.md (session list with metadata)
-  → Read archived-sessions.txt (exclusion list)
-  → Filter: remove archived sessions
-  → Present numbered list to user
-  → User picks session(s)
-  → Read distilled file(s) for selected session(s)
-  → Summarize and proceed
+  → Read SESSION-INDEX.md + archived-sessions.txt (single batch)
+  → Triage: compute total / archived / active counts
+  → Prompt: "Show active only (Cowork GUI) or all (including archived)?"
+  → User chooses → display numbered list
+  → User picks session(s) → load distilled file(s) → summarize
+  → Post-catchup: offer to mark sessions as archived → append to archived-sessions.txt
 ```
+
+### Key design decision: archive state is server-side
+
+Claude Desktop stores the archive flag on Anthropic's servers, not in the local
+filesystem. The local IndexedDB only contains chat drafts and editor state.
+This means the sync script cannot detect archive status automatically.
+
+`archived-sessions.txt` is maintained organically within the catchup-bunny flow
+itself — after catching up, the user is offered to mark sessions as archived.
+No separate tooling or manual file editing required.
 
 ---
 
