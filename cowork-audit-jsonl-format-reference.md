@@ -23,8 +23,11 @@ This document fills the gap by describing the `audit.jsonl` format as observed t
 
 | Platform | Path |
 |----------|------|
-| Windows  | `%APPDATA%\Claude\local-agent-mode-sessions\` |
+| Windows (MSIX/Store) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions\` |
+| Windows (legacy) | `%APPDATA%\Claude\local-agent-mode-sessions\` |
 | macOS    | `~/Library/Application Support/Claude/local-agent-mode-sessions/` *(unverified — inferred from standard Electron app data path; community confirmation welcome)* |
+
+> **Windows MSIX note (March 2026):** Anthropic began distributing Claude Desktop via the Microsoft Store (MSIX package). This moves app data from `%APPDATA%\Claude\` to `%LOCALAPPDATA%\Packages\Claude_<hash>\LocalCache\Roaming\Claude\`. The `<hash>` suffix (e.g., `pzs8sxrjxfjjc`) is derived from Anthropic's publisher certificate and should be stable across installations of the same signed package.
 
 ### Directory structure
 

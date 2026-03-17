@@ -1,7 +1,8 @@
 {
     "_comment": "Copy this file to config.json and edit to match your environment.",
 
-    "sessions_dir": "%APPDATA%\\Claude\\local-agent-mode-sessions",
+    "_sessions_dir_note": "MSIX (Windows Store) builds use %LOCALAPPDATA%\\Packages\\Claude_*\\LocalCache\\Roaming\\Claude\\... — find your suffix with: Get-ChildItem $env:LOCALAPPDATA\\Packages\\Claude_*",
+    "sessions_dir": "%LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\local-agent-mode-sessions",
 
     "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\cowork-sessions",
 

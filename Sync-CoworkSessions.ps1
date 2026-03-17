@@ -176,6 +176,11 @@ function Test-SessionFormat {
             "$env:APPDATA\Claude Desktop\sessions",
             "$env:APPDATA\Claude\sessions"
         )
+        # MSIX (Windows Store) packaging moves app data into a per-package sandbox
+        $msixMatches = Resolve-Path "$env:LOCALAPPDATA\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions" -ErrorAction SilentlyContinue
+        if ($msixMatches) {
+            $alternatives += $msixMatches.Path
+        }
         $found = $alternatives | Where-Object { Test-Path $_ }
         if ($found) {
             $hints += "Found session data at alternative path(s):"

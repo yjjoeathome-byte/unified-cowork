@@ -154,9 +154,12 @@ Session storage paths by platform:
 
 | Platform | Path |
 |----------|------|
-| Windows | `%APPDATA%\Claude\local-agent-mode-sessions\` |
+| Windows (MSIX/Store) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions\` |
+| Windows (legacy) | `%APPDATA%\Claude\local-agent-mode-sessions\` |
 | macOS | `~/Library/Application Support/Claude/local-agent-mode-sessions/` |
 | Linux | `~/.config/Claude/local-agent-mode-sessions/` |
+
+> **Windows MSIX note**: Claude Desktop distributed via the Microsoft Store uses a per-package sandbox. The `*` in the path is a publisher hash suffix (e.g., `Claude_pzs8sxrjxfjjc`). Find yours with: `Get-ChildItem $env:LOCALAPPDATA\Packages\Claude_*`
 
 > **macOS note**: `%APPDATA%` does not expand on macOS. Use absolute paths or `~` (e.g., `~/Library/Application Support/Claude/local-agent-mode-sessions`).
 

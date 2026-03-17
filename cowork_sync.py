@@ -236,12 +236,22 @@ def validate_session_format(sessions_dir: str, fmt_cfg: dict) -> dict:
         home = os.path.expanduser("~")
         if platform.system() == "Windows":
             base = os.environ.get("APPDATA", "")
+            localappdata = os.environ.get("LOCALAPPDATA", "")
             alternatives = [
                 os.path.join(base, "Claude", "local-agent-mode-sessions"),
                 os.path.join(base, "Claude", "claude-code-sessions"),
                 os.path.join(base, "Claude Desktop", "sessions"),
                 os.path.join(base, "Claude", "sessions"),
             ]
+            # MSIX (Windows Store) packaging moves app data into a per-package sandbox
+            if localappdata:
+                import glob as _glob
+                msix_pattern = os.path.join(
+                    localappdata, "Packages", "Claude_*",
+                    "LocalCache", "Roaming", "Claude",
+                    "local-agent-mode-sessions",
+                )
+                alternatives.extend(_glob.glob(msix_pattern))
         elif platform.system() == "Darwin":
             base = os.path.join(home, "Library", "Application Support")
             alternatives = [
