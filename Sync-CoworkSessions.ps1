@@ -176,11 +176,6 @@ function Test-SessionFormat {
             "$env:APPDATA\Claude Desktop\sessions",
             "$env:APPDATA\Claude\sessions"
         )
-        # MSIX (Windows Store) packaging moves app data into a per-package sandbox
-        $msixMatches = Resolve-Path "$env:LOCALAPPDATA\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions" -ErrorAction SilentlyContinue
-        if ($msixMatches) {
-            $alternatives += $msixMatches.Path
-        }
         $found = $alternatives | Where-Object { Test-Path $_ }
         if ($found) {
             $hints += "Found session data at alternative path(s):"
@@ -346,14 +341,25 @@ function Get-PendingSessions {
     foreach ($f in $transcripts) {
         if ($f.Length -lt $minSize) { continue }
 
-        # Skip files locked by a running Cowork session
+        # Try direct hash first; on lock failure, copy-then-hash (active sessions)
         $hash = $null
+        $sourceFile = $f  # default: use original file for distillation
         try {
             $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash
         } catch {
-            Write-Host "[~] Skipping locked file (active session?): $($f.FullName)" -ForegroundColor DarkYellow
-            $Script:WarningCount++
-            continue
+            # File is locked by an active Cowork session — snapshot it
+            try {
+                $tmpPath = Join-Path ([System.IO.Path]::GetTempPath()) "cowork-sync-$([guid]::NewGuid().ToString('N')).jsonl"
+                Copy-Item -Path $f.FullName -Destination $tmpPath -Force
+                $hash = (Get-FileHash -Path $tmpPath -Algorithm SHA256).Hash
+                # Create a FileInfo wrapper so downstream code works identically
+                $sourceFile = Get-Item $tmpPath
+                Write-Host "[~] Active session snapshotted via temp copy: $($f.Directory.Name)" -ForegroundColor DarkYellow
+            } catch {
+                Write-Host "[~] Skipping truly inaccessible file: $($f.FullName)" -ForegroundColor DarkYellow
+                $Script:WarningCount++
+                continue
+            }
         }
 
         # Extract session UUID from parent folder
@@ -363,10 +369,15 @@ function Get-PendingSessions {
         $key = $sessionUuid
         if ($Force -or -not $State.ContainsKey($key) -or $State[$key] -ne $hash) {
             $pending += @{
-                File        = $f
+                File        = $sourceFile
                 Hash        = $hash
                 Key         = $key
                 SessionUuid = $sessionUuid
+            }
+        } else {
+            # Hash matched state — no change. Clean up temp file if we made one.
+            if ($sourceFile.Name -match '^cowork-sync-' -and (Test-Path $sourceFile.FullName)) {
+                Remove-Item $sourceFile.FullName -Force -ErrorAction SilentlyContinue
             }
         }
     }
@@ -844,6 +855,10 @@ foreach ($item in $pending) {
     if ($null -eq $result) {
         Write-Host "    [!] Empty or unparseable — raw archived, distillation skipped" -ForegroundColor DarkYellow
         $state[$item.Key] = $item.Hash
+        # Clean up temp snapshot on early exit too
+        if ($f.Name -match '^cowork-sync-' -and (Test-Path $f.FullName)) {
+            Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+        }
         continue
     }
 
@@ -876,6 +891,11 @@ foreach ($item in $pending) {
     }
 
     $state[$item.Key] = $item.Hash
+
+    # Clean up temp snapshot if this was a locked-file copy
+    if ($f.Name -match '^cowork-sync-' -and (Test-Path $f.FullName)) {
+        Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # --- Rebuild index: include existing distilled files ---
