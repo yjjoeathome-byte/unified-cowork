@@ -2,21 +2,29 @@
 """
 discover-idb.py -- IndexedDB schema discovery for Claude Desktop.
 
-Reads a Chromium LevelDB snapshot (as produced by the canonized
+Reads a Chromium LevelDB + blob snapshot (as produced by the canonized
 robocopy recipe) and enumerates all databases, their object stores,
 and a sample of records per store so we can identify which store
 holds Cowork session transcripts.
 
-Usage:
-    python discover-idb.py <leveldb-snapshot-dir> [--records-per-store N] [--out path.json]
+Snapshot layout convention (canonized):
+    <snapshot-dir>/
+        leveldb/    -- contents of *.indexeddb.leveldb
+        blob/       -- contents of *.indexeddb.blob (may contain binary blobs
+                        referenced by IndexedDB values; required for records
+                        that include Blob values, otherwise iterate_records
+                        raises ValueError)
 
-Outputs:
-    - stdout: human-readable summary
-    - <snapshot-dir>/../schema-<timestamp>.json by default
+Legacy fallback: if <snapshot-dir> contains CURRENT/MANIFEST-* directly,
+treat it as the leveldb dir and look for a sibling *.blob dir.
+
+Usage:
+    python discover-idb.py <snapshot-dir> [--records-per-store N]
+                                          [--blob-dir PATH]
+                                          [--out PATH]
 
 Dependency:
-    pip install ccl_chromium_reader
-    (Pure-Python. Package ships ccl_chromium_indexeddb submodule.)
+    pip install git+https://github.com/cclgroupltd/ccl_chrome_indexeddb.git
 """
 
 from __future__ import annotations
@@ -28,12 +36,12 @@ import sys
 from pathlib import Path
 
 
-# -- ccl import: try both known package layouts -----------------------
+# -- ccl import: try both known module paths --------------------------
 _idb = None
 _import_err = None
 for _modpath in (
-    "ccl_chromium_reader.ccl_chromium_indexeddb",  # current pypi layout
-    "ccl_chromium_indexeddb",                       # legacy / direct clone
+    "ccl_chromium_reader.ccl_chromium_indexeddb",
+    "ccl_chromium_indexeddb",
 ):
     try:
         _idb = __import__(_modpath, fromlist=["*"])
@@ -45,14 +53,55 @@ if _idb is None:
     sys.stderr.write(
         "ERROR: ccl_chromium_indexeddb not importable.\n"
         f"Last import error: {_import_err!r}\n"
-        "Install with: pip install ccl_chromium_reader\n"
+        "Install with:\n"
+        "  pip install git+https://github.com/cclgroupltd/ccl_chrome_indexeddb.git\n"
     )
     sys.exit(2)
 
 
+# -- snapshot path resolution -----------------------------------------
+def _resolve_paths(snapshot_dir: Path, explicit_blob: Path | None):
+    """
+    Return (leveldb_dir, blob_dir_or_None) given the user-provided path.
+
+    Accepts:
+      1. Canonized layout: <snapshot-dir>/leveldb + <snapshot-dir>/blob
+      2. Direct leveldb dir (contains CURRENT file) -- look for sibling
+         *.blob dir via naming convention, or --blob-dir override.
+    """
+    if not snapshot_dir.is_dir():
+        raise SystemExit(f"not a directory: {snapshot_dir}")
+
+    # Case 1: canonized layout
+    canon_ldb = snapshot_dir / "leveldb"
+    canon_blob = snapshot_dir / "blob"
+    if canon_ldb.is_dir() and (canon_ldb / "CURRENT").exists():
+        return canon_ldb, (canon_blob if canon_blob.is_dir() else None)
+
+    # Case 2: raw leveldb dir
+    if (snapshot_dir / "CURRENT").exists():
+        leveldb_dir = snapshot_dir
+        if explicit_blob:
+            return leveldb_dir, explicit_blob
+        # Auto-detect sibling blob dir by Chromium naming convention
+        name = snapshot_dir.name
+        if name.endswith(".indexeddb.leveldb"):
+            base = name[: -len(".indexeddb.leveldb")]
+            sib = snapshot_dir.parent / f"{base}.indexeddb.blob"
+            if sib.is_dir():
+                return leveldb_dir, sib
+        return leveldb_dir, None
+
+    raise SystemExit(
+        f"snapshot layout not recognized at {snapshot_dir}\n"
+        "Expected either:\n"
+        "  <dir>/leveldb/CURRENT + <dir>/blob/  (canonized), or\n"
+        "  <dir>/CURRENT                        (raw leveldb)"
+    )
+
+
 # -- helpers ----------------------------------------------------------
 def _preview(value, max_len: int = 400) -> str:
-    """Return a bounded, JSON-safe preview of a record value."""
     try:
         s = json.dumps(value, default=str, ensure_ascii=False)
     except (TypeError, ValueError):
@@ -63,7 +112,6 @@ def _preview(value, max_len: int = 400) -> str:
 
 
 def _safe(v):
-    """Coerce anything to a JSON-serializable form."""
     try:
         json.dumps(v)
         return v
@@ -72,7 +120,6 @@ def _safe(v):
 
 
 def _value_summary(value) -> dict:
-    """Shallow structural summary of a record value."""
     summary = {"py_type": type(value).__name__}
     if isinstance(value, dict):
         summary["keys"] = sorted(list(value.keys()))[:50]
@@ -86,20 +133,46 @@ def _value_summary(value) -> dict:
     return summary
 
 
+def _open_wrapped(leveldb_dir: Path, blob_dir: Path | None):
+    """
+    Defensive WrappedIndexDB construction across library versions.
+    Newer versions accept (leveldb_path, blob_path); older may not.
+    """
+    args_variants = []
+    if blob_dir is not None:
+        args_variants.append({"args": (str(leveldb_dir), str(blob_dir)), "kwargs": {}})
+        args_variants.append({"args": (str(leveldb_dir),), "kwargs": {"blob_dir": str(blob_dir)}})
+        args_variants.append({"args": (str(leveldb_dir),), "kwargs": {"blob_folder_path": str(blob_dir)}})
+    args_variants.append({"args": (str(leveldb_dir),), "kwargs": {}})
+
+    last_err = None
+    for v in args_variants:
+        try:
+            return _idb.WrappedIndexDB(*v["args"], **v["kwargs"])
+        except TypeError as e:
+            last_err = e
+            continue
+    raise SystemExit(
+        f"Failed to construct WrappedIndexDB with any known signature.\n"
+        f"Last error: {last_err!r}"
+    )
+
+
 # -- main enumeration -------------------------------------------------
-def discover(snapshot_dir: Path, records_per_store: int) -> dict:
-    if not snapshot_dir.is_dir():
-        raise SystemExit(f"not a directory: {snapshot_dir}")
+def discover(snapshot_dir: Path, records_per_store: int, explicit_blob: Path | None) -> dict:
+    leveldb_dir, blob_dir = _resolve_paths(snapshot_dir, explicit_blob)
+    print(f"[*] Opening LevelDB: {leveldb_dir}")
+    print(f"[*] Blob dir:        {blob_dir if blob_dir else '(none - blob records will error)'}")
 
-    print(f"[*] Opening LevelDB: {snapshot_dir}")
-    wrapped = _idb.WrappedIndexDB(str(snapshot_dir))
+    wrapped = _open_wrapped(leveldb_dir, blob_dir)
 
-    # API across versions: .database_ids yields DatabaseId-like objects
     db_ids = list(getattr(wrapped, "database_ids", None) or wrapped.databases)
     print(f"[*] Databases found: {len(db_ids)}\n")
 
     report = {
         "snapshot_path": str(snapshot_dir),
+        "leveldb_path": str(leveldb_dir),
+        "blob_path": str(blob_dir) if blob_dir else None,
         "discovered_at_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "library_module": _idb.__name__,
         "database_count": len(db_ids),
@@ -171,15 +244,16 @@ def discover(snapshot_dir: Path, records_per_store: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("snapshot_dir", help="path to leveldb snapshot directory")
-    ap.add_argument("--records-per-store", type=int, default=3,
-                    help="how many records to sample per store (default: 3)")
-    ap.add_argument("--out", default=None,
-                    help="output JSON path (default: alongside snapshot dir)")
+    ap.add_argument("snapshot_dir", help="path to snapshot (see module docstring for layout)")
+    ap.add_argument("--records-per-store", type=int, default=3)
+    ap.add_argument("--blob-dir", default=None,
+                    help="explicit blob directory (overrides auto-detection)")
+    ap.add_argument("--out", default=None, help="output JSON path")
     args = ap.parse_args()
 
     snap = Path(args.snapshot_dir).resolve()
-    report = discover(snap, args.records_per_store)
+    explicit_blob = Path(args.blob_dir).resolve() if args.blob_dir else None
+    report = discover(snap, args.records_per_store, explicit_blob)
 
     if args.out:
         out_path = Path(args.out)
