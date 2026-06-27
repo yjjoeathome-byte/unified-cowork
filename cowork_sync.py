@@ -113,6 +113,142 @@ def expand_path(p: str) -> str:
 
 
 # ============================================================================
+# Session-store auto-resolution (robust to Anthropic relocating the store)
+# ============================================================================
+# Anthropic periodically moves / renames where Claude writes session
+# transcripts. The ONE durable invariant is: a directory named
+# `local-agent-mode-sessions` (Desktop "</> Code") containing transcript
+# artifacts somewhere beneath it. Never keyed on the session-folder prefix
+# (local_ / ditto_ / local_ditto_ / bare — all observed) or a fixed nesting
+# depth (3 and 4 observed in the same store). Resolution is cost-tiered and
+# cached so steady-state cost is one directory probe; expensive discovery
+# runs only after a real move, and only inside Claude/Anthropic-named folders.
+def _store_has_artifact(path: str, artifact: str = "audit.jsonl") -> bool:
+    """True if `path` exists and has >=1 transcript artifact beneath it.
+    Lazy rglob + next() stops at the first hit."""
+    try:
+        if not path or not os.path.isdir(path):
+            return False
+        return next(Path(path).rglob(artifact), None) is not None
+    except (OSError, ValueError):
+        return False
+
+
+def _sessionsdir_cache_file() -> str:
+    if platform.system() == "Windows":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    else:
+        base = os.path.expanduser("~/.local/share")
+    return os.path.join(base, "cowork-sync-sessionsdir.cache")
+
+
+def resolve_sessions_dir(
+    artifact: str = "audit.jsonl",
+    root_name: str = "local-agent-mode-sessions",
+    refresh: bool = False,
+) -> str | None:
+    """Locate the Claude session store no matter where Anthropic moved it.
+
+    Tier 1  cache (last-known-good)         single probe
+    Tier 2  glob-probe known candidates     per-OS app-data roots
+    Tier 3  Claude/Anthropic-anchored search bounded, only on total miss
+    """
+    import glob as _glob
+
+    cache_file = _sessionsdir_cache_file()
+
+    # Tier 1: cache
+    if not refresh and os.path.isfile(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as fh:
+                cached = fh.read().strip()
+            if _store_has_artifact(cached, artifact):
+                return cached
+        except OSError:
+            pass
+
+    home = os.path.expanduser("~")
+    system = platform.system()
+
+    # Tier 2: cheap glob-probe of known candidate roots (first valid wins)
+    candidates: list[str] = []
+    if system == "Windows":
+        localappdata = os.environ.get("LOCALAPPDATA", "")
+        appdata = os.environ.get("APPDATA", "")
+        if localappdata:
+            candidates += _glob.glob(os.path.join(
+                localappdata, "Packages", "Claude_*",
+                "LocalCache", "Roaming", "Claude", root_name))
+            candidates.append(os.path.join(localappdata, "AnthropicClaude", root_name))
+            candidates.append(os.path.join(localappdata, "Claude", root_name))
+        if appdata:
+            candidates.append(os.path.join(appdata, "Claude", root_name))
+    elif system == "Darwin":
+        base = os.path.join(home, "Library", "Application Support")
+        candidates.append(os.path.join(base, "Claude", root_name))
+    else:
+        candidates.append(os.path.join(home, ".config", "Claude", root_name))
+
+    found = None
+    for c in candidates:
+        if _store_has_artifact(c, artifact):
+            found = c
+            break
+
+    # Tier 3: Claude/Anthropic-anchored bounded discovery (never a blind walk)
+    if not found:
+        if system == "Windows":
+            localappdata = os.environ.get("LOCALAPPDATA", "")
+            appdata = os.environ.get("APPDATA", "")
+            anchor_parents = [localappdata, os.path.join(localappdata, "Packages"), appdata]
+        elif system == "Darwin":
+            anchor_parents = [os.path.join(home, "Library", "Application Support")]
+        else:
+            anchor_parents = [os.path.join(home, ".config"), os.path.join(home, ".local", "share")]
+
+        best, best_mtime = None, -1.0
+        for parent in anchor_parents:
+            if not parent or not os.path.isdir(parent):
+                continue
+            try:
+                entries = list(os.scandir(parent))
+            except OSError:
+                continue
+            for entry in entries:
+                if not entry.is_dir() or not re.search(r"claude|anthropic", entry.name, re.IGNORECASE):
+                    continue
+                try:
+                    for hit in Path(entry.path).rglob(root_name):
+                        if not hit.is_dir():
+                            continue
+                        newest = None
+                        for a in hit.rglob(artifact):
+                            try:
+                                mt = a.stat().st_mtime
+                            except OSError:
+                                continue
+                            if newest is None or mt > newest:
+                                newest = mt
+                        if newest is not None and newest > best_mtime:
+                            best, best_mtime = str(hit), newest
+                except OSError:
+                    continue
+        if best:
+            found = best
+
+    # Persist + return
+    if found:
+        try:
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            with open(cache_file, "w", encoding="utf-8") as fh:
+                fh.write(found)
+        except OSError:
+            pass
+        return found
+    return None
+
+
+# ============================================================================
 # Config loading
 # ============================================================================
 def load_config(config_file: str) -> dict:
@@ -132,6 +268,21 @@ def load_config(config_file: str) -> dict:
     for key in ("sessions_dir", "output_dir", "state_file"):
         if key in cfg and cfg[key]:
             cfg[key] = expand_path(cfg[key])
+
+    # --- Self-healing sessions_dir (absorbs Anthropic relocating the store) ---
+    # The configured literal path stays the fast happy-path. The resolver is a
+    # fail-safe: it only runs when sessions_dir is empty, "auto", or gone, so
+    # the happy path has zero behavior change.
+    sd = cfg.get("sessions_dir")
+    if not sd or sd == "auto" or not os.path.isdir(sd):
+        artifact = (cfg.get("format") or {}).get("transcript_filename", "audit.jsonl")
+        auto = resolve_sessions_dir(artifact=artifact)
+        if auto:
+            if sd and sd != "auto":
+                tc.warn(f"Configured sessions_dir gone; auto-resolved to: {auto}")
+            else:
+                tc.info(f"sessions_dir auto-resolved: {auto}")
+            cfg["sessions_dir"] = auto
 
     # Validate required fields
     for key in ("sessions_dir", "output_dir"):

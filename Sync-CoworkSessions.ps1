@@ -51,7 +51,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Script:WarningCount = 0
 $Script:FormatVersion = "2026-02"  # Expected Cowork format era
-$Script:ScriptVersion = "2026-02-27.1"  # Bump on every functional change
+$Script:ScriptVersion = "2026-06-27.1"  # Bump on every functional change
 
 # ============================================================================
 # Config loading
@@ -79,6 +79,29 @@ function Load-Config {
             if ($cfg[$key].StartsWith("~")) {
                 $cfg[$key] = $cfg[$key].Replace("~", [Environment]::GetFolderPath("UserProfile"))
             }
+        }
+    }
+
+    # --- Self-healing sessions_dir (absorbs Anthropic relocating the store) ---
+    # The configured literal path stays the fast happy-path (a ~1 ms Test-Path).
+    # The resolver is a FAIL-SAFE net: it only runs when that path is empty,
+    # set to "auto", or no longer exists. Happy path = zero behavior change.
+    $sd = $cfg['sessions_dir']
+    if (-not $sd -or $sd -eq 'auto' -or -not (Test-Path -LiteralPath $sd -ErrorAction SilentlyContinue)) {
+        $resolver = Join-Path $PSScriptRoot 'Resolve-CoworkSessionsDir.ps1'
+        if (Test-Path -LiteralPath $resolver) {
+            . $resolver
+            $auto = Resolve-CoworkSessionsDir
+            if ($auto) {
+                if ($sd -and $sd -ne 'auto') {
+                    Write-Host "[i] Configured sessions_dir gone; auto-resolved to: $auto" -ForegroundColor Yellow
+                } else {
+                    Write-Host "[i] sessions_dir auto-resolved: $auto" -ForegroundColor Cyan
+                }
+                $cfg['sessions_dir'] = $auto
+            }
+        } else {
+            Write-Host "[~] Resolver not found next to script; relying on configured sessions_dir only." -ForegroundColor DarkYellow
         }
     }
 

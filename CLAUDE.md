@@ -1,10 +1,12 @@
 # CLAUDE.md — Project Instructions
 
-This repo is `cowork-session-sync`: an automated backup and distillation pipeline for Claude Cowork sessions.
+This repo is `unified-cowork`: an automated backup, distillation, and catch-up pipeline for Claude sessions across **both** coding surfaces — **Claude Desktop "</> Code"** (formerly Cowork) and **Claude Code CLI**.
 
 ## What This Repo Does
 
-It watches the local Cowork session storage directory, copies raw `audit.jsonl` files to an output directory (local or SMB/NAS), and distills each into a clean Markdown transcript. It also tags sessions with project keywords and maintains a session index.
+It locates the local session store (auto-resolving wherever Anthropic put it), copies raw `audit.jsonl` transcripts to an output directory (local or SMB/NAS), and distills each into a clean Markdown transcript. It also tags sessions with project keywords and maintains a session index plus a new-chat catch-up index.
+
+See `SESSION-STORES.md` for the full per-OS storage map of both surfaces and the auto-resolution algorithm. Note: the repo keeps the historical `cowork` name throughout filenames; "Cowork" and Desktop "</> Code" refer to the same surface.
 
 ## Development Infrastructure — NAS Access
 
@@ -38,7 +40,8 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 
 | | Windows | macOS | Linux |
 |---|---------|-------|-------|
-| Session path | `%APPDATA%\Claude\local-agent-mode-sessions\` | `~/Library/Application Support/Claude/local-agent-mode-sessions/` | `~/.config/Claude/local-agent-mode-sessions/` |
+| Session path | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions\` (MSIX) or `%APPDATA%\Claude\...` (legacy) | `~/Library/Application Support/Claude/local-agent-mode-sessions/` | `~/.config/Claude/local-agent-mode-sessions/` |
+| Auto-resolution | `sessions_dir: "auto"` → `Resolve-CoworkSessionsDir.ps1` / `resolve_sessions_dir()` finds it | same | same |
 | Scheduling | Windows Scheduled Task (`Register-CoworkSync.ps1`) | launchd (`com.cowork-sync.python.plist`) | cron |
 | SMB output | UNC paths: `\\server\share\path` | Mount paths: `/Volumes/sharename/path` | Mount paths (e.g., `/mnt/nas/path`) |
 | Runtime (primary) | Python 3.8+ | Python 3 (bundled with macOS 12.3+) | Python 3 |
@@ -49,9 +52,13 @@ The canonical repo clone lives on the NAS, accessible from multiple paths depend
 ```
 ├── CLAUDE.md                       ← You are here (project instructions for Claude)
 ├── README.md                       ← User-facing documentation
+├── SESSION-STORES.md               ← Per-OS storage map (both surfaces) + resolver algorithm
+├── cowork-audit-jsonl-format-reference.md  ← Reverse-engineered audit.jsonl schema
 ├── SECURITY.md                     ← Security considerations and vulnerability reporting
 ├── cowork_sync.py                  ← Main sync + distillation script (Python 3, primary)
+├── test_cowork_sync.py             ← Unit tests (stdlib unittest; 59 tests)
 ├── Sync-CoworkSessions.ps1         ← Alternative sync script (PowerShell 7)
+├── Resolve-CoworkSessionsDir.ps1   ← Self-healing session-store locator (PowerShell)
 ├── Register-CoworkSync.ps1         ← Windows Scheduled Task registration (PowerShell)
 ├── com.cowork-sync.python.plist    ← macOS launchd agent (Python)
 ├── com.cowork-sync.agent.plist     ← macOS launchd agent (PowerShell, alternative)
@@ -86,6 +93,7 @@ The pipeline generates the following in the output directory:
 7. **Cross-platform via Python 3 stdlib**: one script, three scheduling mechanisms. Python 3.8+ with no pip dependencies. PowerShell 7 version kept as an alternative.
 8. **Catch-up index is heuristic, not LLM-generated**: topic extraction uses the first user message (truncated to 120 chars). No API calls, no inference cost. Good enough for a menu; the distilled file provides full context when selected.
 9. **CATCH-UP.md is a separate file from SESSION-INDEX.md**: the index is a flat table for reference; the catch-up file is grouped by project for consumption by the CLAUDE.md protocol. Different audiences, different formats.
+10. **Self-healing location, not hardcoded paths**: `sessions_dir: "auto"` invokes a cost-tiered, cached resolver (`Resolve-CoworkSessionsDir.ps1` / `resolve_sessions_dir()`) that finds the store by its durable invariant (a `local-agent-mode-sessions` dir with transcripts beneath it). It absorbs MSIX repackages, publisher-hash renames, prefix churn (`local_`/`ditto_`/`local_ditto_`/bare), and variable nesting depth (3 and 4 seen in one store). The configured literal path stays the happy-path; the resolver only fires when it's empty/`"auto"`/gone. See SESSION-STORES.md. Keep both engines' resolvers in parity when editing.
 
 ## When Helping Users
 
@@ -94,7 +102,7 @@ If a user opens this repo in Cowork and asks for help:
 ### macOS Setup (Python — recommended)
 1. Python 3 is bundled with macOS 12.3+ — no install needed.
 2. Copy `config.example.macos.json` to `config.json`
-3. Set `sessions_dir` to `~/Library/Application Support/Claude/local-agent-mode-sessions`
+3. Leave `sessions_dir` as `"auto"` (recommended) — the resolver finds the store. To pin: `~/Library/Application Support/Claude/local-agent-mode-sessions`
    - Tilde (`~`) is expanded to the home directory at runtime.
    - `%APPDATA%` style variables do NOT work on macOS.
 4. Set `output_dir` to local path or SMB mount point (e.g., `/Volumes/nas-share/cowork-sessions`)
@@ -118,7 +126,7 @@ If a user opens this repo in Cowork and asks for help:
 ### Windows Setup
 1. Python 3.8+: https://www.python.org/downloads/ (or use the Microsoft Store)
 2. Copy `config.example.json` to `config.json`
-3. Set `sessions_dir` to `%APPDATA%\Claude\local-agent-mode-sessions` (default, usually works)
+3. Leave `sessions_dir` as `"auto"` (recommended). MSIX/Store builds live under `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\local-agent-mode-sessions` — `"auto"` handles that and legacy `%APPDATA%\Claude\...` alike.
 4. Set `output_dir` to local path or UNC: `\\server\share\path\cowork-sessions`
 5. Test: `python cowork_sync.py --check`
 6. Run: `python cowork_sync.py --dry-run`
@@ -128,7 +136,7 @@ If a user opens this repo in Cowork and asks for help:
 ### Linux Setup
 1. Python 3 is pre-installed on most distributions.
 2. Copy `config.example.linux.json` to `config.json`
-3. Set `sessions_dir` to `~/.config/Claude/local-agent-mode-sessions`
+3. Leave `sessions_dir` as `"auto"` (recommended). To pin: `~/.config/Claude/local-agent-mode-sessions`
 4. Set `output_dir` to local path or mount point (e.g., `/mnt/nas/cowork-sessions`)
 5. Test: `python3 cowork_sync.py --check`
 6. Run: `python3 cowork_sync.py --dry-run`

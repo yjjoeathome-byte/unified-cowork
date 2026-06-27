@@ -1,10 +1,10 @@
 {
-    "_comment": "Copy this file to config.json and edit to match your environment.",
+    "_comment": "Windows example — copy this file to config.json and edit to match your environment.",
 
-    "_sessions_dir_note": "MSIX (Windows Store) builds use %LOCALAPPDATA%\\Packages\\Claude_*\\LocalCache\\Roaming\\Claude\\... — find your suffix with: Get-ChildItem $env:LOCALAPPDATA\\Packages\\Claude_*",
-    "sessions_dir": "%LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\local-agent-mode-sessions",
+    "_sessions_dir_note": "Leave as \"auto\" (recommended): the resolver locates the store and survives Anthropic moving it (MSIX repackage, publisher-hash rename, prefix change, etc.). To pin a literal path instead, see SESSION-STORES.md — e.g. %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\local-agent-mode-sessions",
+    "sessions_dir": "auto",
 
-    "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\cowork-sessions",
+    "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\claude-sessions",
 
     "state_file": "%LOCALAPPDATA%\\cowork-sync-state.json",
 
@@ -20,7 +20,7 @@
     },
 
     "format": {
-        "_comment": "Do not edit unless you know the Cowork session format has changed.",
+        "_comment": "Do not edit unless the JSONL *schema* changes. Location, folder-prefix, and nesting-depth changes are handled automatically by the resolver.",
         "session_dir_prefix": "local_",
         "transcript_filename": "audit.jsonl",
         "min_file_size_bytes": 1024,

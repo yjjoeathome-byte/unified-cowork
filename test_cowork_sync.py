@@ -69,6 +69,14 @@ class TestExpandPath(unittest.TestCase):
 # TestLoadConfig
 # ============================================================================
 class TestLoadConfig(unittest.TestCase):
+    def setUp(self):
+        # Auto-resolution is a no-op by default so these tests are hermetic
+        # regardless of whether a Claude store exists on the host machine.
+        # Tests that exercise self-healing override this with their own patch.
+        patcher = patch("cowork_sync.resolve_sessions_dir", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_valid_config(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = os.path.join(td, "config.json")
@@ -150,6 +158,28 @@ class TestLoadConfig(unittest.TestCase):
 
             for key in ("sessions_dir", "output_dir", "state_file"):
                 self.assertFalse(cfg[key].startswith("~"), f"{key} still has tilde")
+
+    def test_sessions_dir_auto_resolves(self):
+        """sessions_dir == 'auto' is filled in by the resolver."""
+        with patch("cowork_sync.resolve_sessions_dir", return_value="/discovered/store"):
+            with tempfile.TemporaryDirectory() as td:
+                cfg_path = os.path.join(td, "config.json")
+                with open(cfg_path, "w") as f:
+                    json.dump({"sessions_dir": "auto", "output_dir": "/tmp/output"}, f)
+                with _suppress_output():
+                    cfg = cs.load_config(cfg_path)
+        self.assertEqual(cfg["sessions_dir"], "/discovered/store")
+
+    def test_missing_sessions_dir_recovered_by_resolver(self):
+        """A missing sessions_dir is recovered when the resolver finds a store."""
+        with patch("cowork_sync.resolve_sessions_dir", return_value="/discovered/store"):
+            with tempfile.TemporaryDirectory() as td:
+                cfg_path = os.path.join(td, "config.json")
+                with open(cfg_path, "w") as f:
+                    json.dump({"output_dir": "/tmp/output"}, f)
+                with _suppress_output():
+                    cfg = cs.load_config(cfg_path)
+        self.assertEqual(cfg["sessions_dir"], "/discovered/store")
 
 
 # ============================================================================

@@ -1,9 +1,10 @@
 {
     "_comment": "macOS example — copy to config.json. Tilde (~) expands to your home directory. Avoid ~/Documents/ — macOS sandboxing may block launchd writes.",
 
-    "sessions_dir": "~/Library/Application Support/Claude/local-agent-mode-sessions",
+    "_sessions_dir_note": "Leave as \"auto\" (recommended). To pin a literal path: ~/Library/Application Support/Claude/local-agent-mode-sessions",
+    "sessions_dir": "auto",
 
-    "output_dir": "~/cowork-sessions",
+    "output_dir": "~/claude-sessions",
 
     "state_file": "~/.local/share/cowork-sync-state.json",
 
@@ -16,7 +17,7 @@
     },
 
     "format": {
-        "_comment": "Do not edit unless you know the Cowork session format has changed.",
+        "_comment": "Do not edit unless the JSONL *schema* changes. Location/prefix/depth are handled automatically.",
         "session_dir_prefix": "local_",
         "transcript_filename": "audit.jsonl",
         "min_file_size_bytes": 1024,
