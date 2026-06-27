@@ -61,7 +61,7 @@ Format discoveries are high-value contributions — they keep the project workin
 ## What We're Not Looking For
 
 - External runtime dependencies (no pip packages)
-- Cloud-specific integrations (this is a local/NAS tool)
+- Cloud-specific integrations (this is a local-first tool)
 - LLM-based features (topic extraction stays heuristic, not inference)
 
 ## Security Issues

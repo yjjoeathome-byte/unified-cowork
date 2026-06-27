@@ -243,7 +243,7 @@ class TestGetProjectTags(unittest.TestCase):
         self.assertEqual(cs.get_project_tags("I love REACT", tags), "web")
 
     def test_no_match_returns_untagged(self):
-        tags = {"infra": ["terraform"]}
+        tags = {"backend": ["django"]}
         self.assertEqual(cs.get_project_tags("nothing relevant", tags), "untagged")
 
     def test_first_keyword_match_wins_per_project(self):

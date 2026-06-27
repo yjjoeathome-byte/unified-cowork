@@ -1,22 +1,17 @@
 {
     "_comment": "Windows example — copy this file to config.json and edit to match your environment.",
 
-    "_sessions_dir_note": "Leave as \"auto\" (recommended): the resolver locates the store and survives Anthropic moving it (MSIX repackage, publisher-hash rename, prefix change, etc.). To pin a literal path instead, see SESSION-STORES.md — e.g. %LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\local-agent-mode-sessions",
+    "_sessions_dir_note": "Leave as \"auto\" (recommended): the resolver locates the store and survives Anthropic moving it (MSIX repackage, publisher-hash rename, prefix change, etc.). To pin a literal path instead, see SESSION-STORES.md.",
     "sessions_dir": "auto",
 
-    "output_dir": "\\\\YOUR-NAS-IP\\share\\path\\to\\claude-sessions",
+    "_output_dir_note": "Any local folder works. For a NAS, use a UNC path like \\\\server\\share\\claude-sessions.",
+    "output_dir": "%USERPROFILE%\\Documents\\claude-sessions",
 
     "state_file": "%LOCALAPPDATA%\\cowork-sync-state.json",
 
     "project_tags": {
-        "my-project": [
-            "keyword1",
-            "keyword2",
-            "specific-tool-name"
-        ],
-        "another-project": [
-            "other-keyword"
-        ]
+        "backend": ["django", "postgres", "celery"],
+        "frontend": ["react", "tailwind", "vite"]
     },
 
     "format": {

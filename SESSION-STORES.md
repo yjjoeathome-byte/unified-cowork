@@ -16,7 +16,7 @@ Claude has two coding surfaces, and they are converging:
 1. **Claude Desktop "</> Code"** — the agentic coding mode inside the desktop app, formerly branded **Cowork**. Internally still "local-agent-mode."
 2. **Claude Code CLI** — the standalone terminal tool (`claude`).
 
-They are not really separate: Desktop "</> Code" launches Claude Code *inside* the app. On the verified machine, the Desktop store and a CLI project directory shared the **same session UUIDs** (`…claude-code-sessions-9d8b7693…-ab2e40a9…`). Treat them as two storage layouts for one underlying engine.
+They are not really separate: Desktop "</> Code" launches Claude Code *inside* the app. In one observed install, the Desktop store and a CLI project directory shared the **same session UUIDs** (`…claude-code-sessions-<uuid-A>…-<uuid-B>…`). Treat them as two storage layouts for one underlying engine.
 
 ---
 
@@ -46,9 +46,9 @@ One per session. Schema documented in
 
 ```
 local-agent-mode-sessions/
-  <container-uuid>/                       e.g. 9d8b7693-152c-436b-a72e-0cb39a5ca0ca
-    <home-uuid>/                          e.g. ab2e40a9-9432-4db2-b051-1dccfecd1b16
-      <prefix>_<session-uuid>/            e.g. local_699fc768-...
+  <container-uuid>/                       e.g. a1b2c3d4-1111-2222-3333-444455556666
+    <home-uuid>/                          e.g. b2c3d4e5-7777-8888-9999-aaaabbbbcccc
+      <prefix>_<session-uuid>/            e.g. local_1f2e3d4c-...
         audit.jsonl                       ← the transcript (depth 3)
   skills-plugin/                          ← non-session sibling, ignore
 ```
@@ -80,9 +80,9 @@ One file **per session**, named by session UUID, grouped into per-working-direct
 `<cwd-slug>` is the session's working directory with separators/colons flattened to `-`. Examples (verified):
 
 ```
-C--Users-yjjoe
---10-255-10-193-mnt-home-storage-...-datacenter-inference-simulator
-C--Users-yjjoe-AppData-Local-Packages-Claude-..-claude-code-sessions-9d8b7693-..-ab2e40a9-..
+C--Users-alice-projects-my-app
+C--Users-alice-source-acme-api
+C--Users-alice-AppData-Local-Packages-Claude-..-claude-code-sessions-<uuid>-..-<uuid>-..
 ```
 
 On the verified machine: **359 `.jsonl` transcripts** across the project folders.

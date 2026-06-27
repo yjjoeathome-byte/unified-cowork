@@ -113,8 +113,8 @@ That's the whole setup. Environment variables (`%APPDATA%`, `%LOCALAPPDATA%`) ar
 
     // Optional: tag sessions by keyword (can be empty {}).
     "project_tags": {
-        "infra":     ["proxmox", "kubernetes", "terraform"],
-        "ml":        ["vllm", "lora", "fine-tuning"]
+        "backend":   ["django", "postgres", "celery"],
+        "frontend":  ["react", "tailwind", "vite"]
     },
 
     // Format assumptions — only touch these if Anthropic changes the JSONL *schema*.
@@ -225,9 +225,9 @@ output_dir/
 ├── SESSION-INDEX.md   ← catalog of all sessions (table, newest first)
 ├── CATCH-UP.md        ← project-grouped topic index for new-chat bootstrap
 ├── raw/               ← lossless transcript copies (your safety net)
-│   └── 2026-06-27_bold-confident-knuth.jsonl
+│   └── 2026-06-27_gentle-river-3b9c.jsonl
 └── distilled/         ← clean Markdown transcripts (what you read)
-    └── 2026-06-27_bold-confident-knuth.md
+    └── 2026-06-27_gentle-river-3b9c.md
 ```
 
 For each session the pipeline **archives** the raw transcript, **distills** it to Markdown (user messages, Claude's text, one-line tool summaries, a metadata header), **tags** it by project keyword, and **indexes** it. Distillation strips thinking blocks, tool-call JSON, permission prompts, signatures, and raw tool results — typically a **~95% size reduction** with all conversational content preserved.
@@ -235,7 +235,7 @@ For each session the pipeline **archives** the raw transcript, **distills** it t
 ### Distilled transcript
 
 ```markdown
-# Session: bold-confident-knuth
+# Session: gentle-river-3b9c
 
 | Field | Value |
 |-------|-------|
@@ -244,9 +244,9 @@ For each session the pipeline **archives** the raw transcript, **distills** it t
 | Started | 2026-06-27T09:15:00Z |
 | User turns | 62 |
 | Cost (USD) | $33.47 |
-| MCP servers | filesystem, ssh-relay |
-| Summary | wire up the self-healing resolver |
-| Projects | infra |
+| MCP servers | filesystem, github |
+| Summary | add rate limiting to the login endpoint |
+| Projects | backend |
 | Format version | 2026-02 |
 
 ---
@@ -263,12 +263,12 @@ For each session the pipeline **archives** the raw transcript, **distills** it t
 
 ## Project tagging
 
-Sessions are auto-tagged by scanning the distilled transcript for keywords (case-insensitive). A session can match multiple projects or none (`untagged`). Use specific terms — `"vllm"` beats `"model"`.
+Sessions are auto-tagged by scanning the distilled transcript for keywords (case-insensitive). A session can match multiple projects or none (`untagged`). Use specific terms — `"postgres"` beats `"database"`.
 
 ```json
 "project_tags": {
-    "infra-project": ["proxmox", "kubernetes", "terraform"],
-    "ml-research":   ["vllm", "lora", "fine-tuning"]
+    "backend":  ["django", "postgres", "celery"],
+    "frontend": ["react", "tailwind", "vite"]
 }
 ```
 
@@ -279,9 +279,9 @@ Sessions are auto-tagged by scanning the distilled transcript for keywords (case
 The sync writes `CATCH-UP.md` — a lightweight, project-grouped index, each line a session with its first-message topic:
 
 ```markdown
-## my-infra-project
-- **2026-06-22** f403658a (44 turns, $18.20): "debug the ceph rebalance stall"
-- **2026-06-20** 81074e7c (71 turns, $24.09): "upgrade the storage nodes to NVMe"
+## my-web-app
+- **2026-06-22** f403658a (44 turns, $18.20): "fix the flaky checkout test"
+- **2026-06-20** 81074e7c (71 turns, $24.09): "migrate the build from webpack to vite"
 ```
 
 Add a **catch-up protocol** to your global `CLAUDE.md` so every new chat reads `CATCH-UP.md` and offers to restore context. A ready-to-paste template is in **[examples/catch-up-protocol.md](examples/catch-up-protocol.md)**. The flow: new chat → Claude reads `CATCH-UP.md` (cheap) → presents a numbered list → you pick one → Claude reads the first ~50 lines of that distilled transcript → work resumes.

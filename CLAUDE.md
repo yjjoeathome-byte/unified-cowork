@@ -8,33 +8,19 @@ It locates the local session store (auto-resolving wherever Anthropic put it), c
 
 See `SESSION-STORES.md` for the full per-OS storage map of both surfaces and the auto-resolution algorithm. Note: the repo keeps the historical `cowork` name throughout filenames; "Cowork" and Desktop "</> Code" refer to the same surface.
 
-## Development Infrastructure — NAS Access
+## Development
 
-The canonical repo clone lives on the NAS, accessible from multiple paths depending on context:
+Standard GitHub workflow — nothing special required beyond a Python 3.8+ interpreter.
 
-| Context | Path |
-|---------|------|
-| Proxmox hosts (node00–node06) | `/mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/unified-cowork-repo` |
-| Windows (SMB mapped drive) | `Z:\yjjoe-workspace\Anthropic\root\unified-cowork-repo` |
-| Cowork sessions (ssh-relay) | Use any `node0X` host alias via ssh-relay MCP tool |
+```bash
+git clone https://github.com/yjjoeathome-byte/unified-cowork.git
+cd unified-cowork
+python3 -m unittest test_cowork_sync -v   # run the test suite (stdlib only, no install)
+```
 
-**NAS details:**
-- NFS server: `10.255.10.193`, export: `/mnt/home-storage/gitsilence-nas`, NFSv4.2
-- Mounted on all 7 Proxmox hosts at `/mnt/pve/gs-nas` (defined in `/etc/pve/storage.cfg`)
-- Git is installed on all Proxmox hosts (git 2.47.3)
-- Git remote: `https://github.com/yjjoeathome-byte/unified-cowork.git` (HTTPS, push requires GitHub auth)
-
-**For Cowork/Claude sessions:** Use ssh-relay to any Proxmox host (node00–node06) for git operations. All hosts have equivalent access. No PAT required for read operations or local branch work — only `git push` needs GitHub credentials (configured on the Windows side).
-
-**Git push host:** node03 is the canonical push host. It has an ed25519 deploy key (`/root/.ssh/github_deploy_unified_cowork`) registered as a repo-scoped deploy key on GitHub with write access. The remote URL is SSH: `git@github.com-unified-cowork:yjjoeathome-byte/unified-cowork.git` (routed via `/root/.ssh/config` Host alias). If node03 is down, any other Proxmox host can push — but a new deploy key must be generated on that host and added to the repo on GitHub first.
-
-**NFS ownership note:** First git operation on a new host requires `git config --global --add safe.directory /mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/unified-cowork-repo` due to NFS UID mapping.
-
-**Windows access is read-only.** The SMB-mapped `Z:\` view of the repo shows the SSH remote URL but cannot push (no deploy key, NFS permission denied on `.git/config`). This is by design — node03 pushes, Windows reads.
-
-**Git operations are delegated to Claude.** The repo owner is not a git specialist. Claude sessions should handle all git operations (commit, push, branch, merge, rebase) via ssh-relay on node03 without requiring manual git commands from the user. Ask the user for decisions (merge strategy, commit scope) but execute the commands autonomously.
-
-**Working directory hygiene:** Windows Explorer creates `Thumbs.db`, `Zone.Identifier`, and CRLF artifacts on the NFS share. These are not tracked — ignore them in `git status`. If CRLF diffs appear on all files, run `git checkout -- .` to reset.
+- Branch, commit, and open a pull request as usual — see `CONTRIBUTING.md`.
+- `config.json`, `raw/`, `distilled/`, and `SESSION-INDEX.md` are git-ignored. Never commit a real `config.json`; it holds your own paths.
+- Keep the two engines (`cowork_sync.py` and `Sync-CoworkSessions.ps1`) behaviorally in parity, including the resolver.
 
 ## Platform Support
 

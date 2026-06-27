@@ -82,7 +82,7 @@ The first `system` entry with `subtype: "init"` is the session metadata block. I
   "tools": ["Task", "Bash", "Read", "Write", ...], // available tools (long array)
   "mcp_servers": [                                 // connected MCP servers
     {"name": "filesystem", "status": "connected"},
-    {"name": "kubernetes", "status": "connected"}
+    {"name": "github", "status": "connected"}
   ],
   "agents": ["Bash", "general-purpose", "Plan", ...],
   "skills": ["debug", "anthropic-skills:docx", ...],
@@ -115,7 +115,7 @@ Permission pairs bracket every tool call. They record what tool was invoked, wha
   "type": "system",
   "subtype": "permission_request",
   "tool_name": "mcp__filesystem__list_directory",
-  "tool_input": {"path": "\\\\10.255.10.193\\..."},
+  "tool_input": {"path": "\\\\server\\..."},
   "uuid": "e9c88351-...",
   "session_id": "281a2e36-...",
   "_audit_timestamp": "2026-02-11T13:57:48.325Z"

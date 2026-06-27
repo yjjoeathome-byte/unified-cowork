@@ -9,7 +9,7 @@ Session catch-up with archive filtering, readable session titles, and fast-path 
 **Prerequisites:**
 - `Sync-CoworkSessions.ps1` running on a schedule (generates `SESSION-INDEX.md` and `CATCH-UP.md`)
 - `SESSION-INDEX.md`, `CATCH-UP.md`, and `archived-sessions.txt` accessible from within Cowork
-- Adapt the read mechanism below to match your setup (local path, MCP filesystem, ssh-relay, etc.)
+- Adapt the read mechanism below to match your setup (local path, MCP filesystem, a mounted share, etc.)
 
 ---
 
