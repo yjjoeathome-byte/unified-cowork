@@ -72,6 +72,8 @@ Both engines ship the resolver: **PowerShell** (`Resolve-CoworkSessionsDir.ps1`)
 
 **Alternative runtime:** PowerShell 7+ (`pwsh`) — `Sync-CoworkSessions.ps1` is a full-parity port for users who prefer it (and is what the bundled Windows Scheduled Task runs).
 
+> **Platform support — honest status.** **Windows** is the primary, most-exercised target (it ships the bundled Scheduled Task). **Linux** is supported and tested. **macOS is documented but under-maintained** — the config template, launchd unit, and path handling are all present, but the Mac port sees little real-world use and isn't regularly tested, so expect rough edges. **macOS users and contributors are very welcome** — bug reports and PRs to firm up the port are exactly the kind of help this project wants.
+
 ---
 
 ## Setup
