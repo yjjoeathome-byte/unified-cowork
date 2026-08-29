@@ -39,3 +39,7 @@ Thumbs.db
 
 # Misc
 Originals/
+
+# agent/harness local state (settle 2026-08-29)
+.serena/
+.superharness/

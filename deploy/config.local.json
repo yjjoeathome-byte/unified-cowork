@@ -1,0 +1,30 @@
+{
+    "_comment": "Local deployment config — sits at D:\\anthropic\\nas-replication\\config.json",
+    "_comment2": "Writes to local staging, then mirrors to NAS via Run-SyncAndMirror.ps1",
+
+    "sessions_dir": "%LOCALAPPDATA%\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\local-agent-mode-sessions",
+
+    "output_dir": "D:\\anthropic\\cowork-sessions",
+
+    "state_file": "%LOCALAPPDATA%\\cowork-sync-state.json",
+
+    "project_tags": {
+        "datacenter-inference-simulator": [
+            "datacenter",
+            "inference",
+            "simulator",
+            "Phase 5",
+            "vllm",
+            "locust",
+            "bench",
+            "corpus",
+            "grafana",
+            "victoriametrics",
+            "rke2",
+            "caddy",
+            "vm903",
+            "lxc780",
+            "lxc790"
+        ]
+    }
+}
